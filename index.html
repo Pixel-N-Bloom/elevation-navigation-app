@@ -647,6 +647,17 @@
                 // Reinitialize map in normal container
                 setTimeout(function() {
                     initializeMap();
+                    // Re-add routes if they exist
+                    if (state.routes.length > 0 && state.destination) {
+                        geocodeAddress(state.destination).then(function(destCoords) {
+                            addAllRoutesToMap(destCoords);
+                            if (state.selectedRoute) {
+                                selectRouteOption(state.selectedRoute.id);
+                            }
+                        }).catch(function() {
+                            console.log('Could not re-add routes after map resize');
+                        });
+                    }
                 }, 100);
             } else {
                 // Enter fullscreen
@@ -668,6 +679,17 @@
                 // Reinitialize map in fullscreen container
                 setTimeout(function() {
                     initializeMap();
+                    // Re-add routes if they exist
+                    if (state.routes.length > 0 && state.destination) {
+                        geocodeAddress(state.destination).then(function(destCoords) {
+                            addAllRoutesToMap(destCoords);
+                            if (state.selectedRoute) {
+                                selectRouteOption(state.selectedRoute.id);
+                            }
+                        }).catch(function() {
+                            console.log('Could not re-add routes after map resize');
+                        });
+                    }
                 }, 100);
             }
         }
@@ -824,7 +846,7 @@
                     
                     // Add routing to map if visible
                     if (state.mapVisible && state.map) {
-                        addRoadRoutingToMap(destCoords);
+                        addAllRoutesToMap(destCoords);
                     }
                 })
                 .catch(function(error) {
@@ -961,57 +983,334 @@
             return h + 'h ' + (m > 0 ? m + 'm' : '');
         }
 
-        function addRoadRoutingToMap(destination) {
+        function getElevationColor(elevation) {
+            if (elevation <= 2000) {
+                return '#16a34a'; // Green for 2,000ft or less
+            } else if (elevation <= 4000) {
+                return '#f59e0b'; // Yellow for 2,001-4,000ft
+            } else if (elevation <= 6000) {
+                return '#f97316'; // Orange for 4,001-6,000ft
+            } else {
+                return '#dc2626'; // Red for above 6,000ft
+            }
+        }
+
+        function addAllRoutesToMap(destination) {
             if (!state.map) return;
             
-            console.log('Adding road routing to map');
+            console.log('Adding all route options to map');
             
-            // Remove existing routing control
-            if (state.routingControl) {
-                state.map.removeControl(state.routingControl);
+            // Clear existing routes
+            clearAllRoutesFromMap();
+            
+            // Create route lines for each option
+            state.routeLines = {};
+            
+            // Add start and end markers
+            addRouteMarkers(destination);
+            
+            // Generate and add each route option
+            for (var i = 0; i < state.routes.length; i++) {
+                var route = state.routes[i];
+                addRouteToMap(route, destination, i === 0); // Show first route by default
             }
             
-            // Add routing control with road routing
-            state.routingControl = L.Routing.control({
-                waypoints: [
-                    L.latLng(state.currentLocation.lat, state.currentLocation.lng),
-                    L.latLng(destination.lat, destination.lng)
-                ],
-                routeWhileDragging: false,
-                addWaypoints: false,
-                createMarker: function(i, wp, nWps) {
-                    // Custom markers
-                    if (i === 0) {
-                        return L.marker(wp.latLng, {
-                            icon: L.divIcon({
-                                className: 'start-marker',
-                                html: '<div style="background: #16a34a; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">START</div>',
-                                iconSize: [50, 24],
-                                iconAnchor: [25, 12]
-                            })
-                        });
-                    } else {
-                        return L.marker(wp.latLng, {
-                            icon: L.divIcon({
-                                className: 'end-marker',
-                                html: '<div style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">END</div>',
-                                iconSize: [40, 24],
-                                iconAnchor: [20, 12]
-                            })
+            // Fit map to show all routes
+            if (state.routeLines[1]) {
+                state.map.fitBounds(state.routeLines[1].getBounds(), { padding: [20, 20] });
+            }
+        }
+
+        function addRouteMarkers(destination) {
+            // Add start marker
+            var startIcon = L.divIcon({
+                className: 'start-marker',
+                html: '<div style="background: #16a34a; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">START</div>',
+                iconSize: [50, 24],
+                iconAnchor: [25, 12]
+            });
+            
+            state.startMarker = L.marker([state.currentLocation.lat, state.currentLocation.lng], { 
+                icon: startIcon 
+            }).addTo(state.map);
+            
+            state.startMarker.bindPopup('Start: ' + state.currentCity + '<br>Elevation: ' + Math.round(state.currentLocation.elevation) + ' ft');
+            
+            // Add end marker
+            var endIcon = L.divIcon({
+                className: 'end-marker',
+                html: '<div style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">END</div>',
+                iconSize: [40, 24],
+                iconAnchor: [20, 12]
+            });
+            
+            state.endMarker = L.marker([destination.lat, destination.lng], { 
+                icon: endIcon 
+            }).addTo(state.map);
+            
+            state.endMarker.bindPopup('Destination: ' + state.destination);
+        }
+
+        function addRouteToMap(route, destination, isVisible) {
+            var routeCoords = generateRouteCoordinates(route, destination);
+            
+            // Create route segments with elevation-based colors
+            var routeSegments = [];
+            var routeGroup = L.layerGroup();
+            
+            for (var i = 0; i < routeCoords.length - 1; i++) {
+                var segmentStart = routeCoords[i];
+                var segmentEnd = routeCoords[i + 1];
+                
+                // Get elevation for this segment (use profile data)
+                var profileIndex = Math.floor((i / (routeCoords.length - 1)) * (route.profile.length - 1));
+                var elevation = route.profile[profileIndex] || route.profile[0];
+                
+                // Get color based on elevation
+                var segmentColor = getElevationColor(elevation);
+                
+                // Create segment line
+                var segment = L.polyline([segmentStart, segmentEnd], {
+                    color: segmentColor,
+                    weight: isVisible ? 6 : 4,
+                    opacity: isVisible ? 0.9 : 0.3,
+                    dashArray: isVisible ? null : '10, 10'
+                });
+                
+                // Add click handler to select this route
+                segment.on('click', function() {
+                    selectRouteOption(route.id);
+                });
+                
+                routeGroup.addLayer(segment);
+                routeSegments.push(segment);
+            }
+            
+            // Add the route group to map
+            routeGroup.addTo(state.map);
+            
+            // Add popup with route info to the group
+            var popupContent = '<strong>' + route.name + '</strong><br>' +
+                'Distance: ' + route.distance + '<br>' +
+                'Time: ' + route.duration + '<br>' +
+                'Max Elevation: ' + route.maxElevation + ' ft<br>' +
+                '<div style="margin-top: 8px; font-size: 0.8rem;">' +
+                '<div><span style="color: #16a34a;">●</span> ≤2,000ft</div>' +
+                '<div><span style="color: #f59e0b;">●</span> 2,001-4,000ft</div>' +
+                '<div><span style="color: #f97316;">●</span> 4,001-6,000ft</div>' +
+                '<div><span style="color: #dc2626;">●</span> >6,000ft</div>' +
+                '</div>';
+            
+            if (route.maxElevation > state.elevationThreshold) {
+                popupContent += '<br><span style="color: #dc2626; font-weight: bold;">⚠️ Exceeds Your Safe Limit</span>';
+            }
+            
+            // Add popup to first segment
+            if (routeSegments.length > 0) {
+                routeSegments[0].bindPopup(popupContent);
+            }
+            
+            // Store route reference
+            state.routeLines[route.id] = {
+                group: routeGroup,
+                segments: routeSegments,
+                coords: routeCoords
+            };
+            
+            // Add elevation markers for visible route
+            if (isVisible) {
+                addElevationMarkers(route, routeCoords);
+            }
+        }
+
+        function addElevationMarkers(route, routeCoords) {
+            // Clear existing elevation markers
+            if (state.elevationMarkers) {
+                for (var i = 0; i < state.elevationMarkers.length; i++) {
+                    state.map.removeLayer(state.elevationMarkers[i]);
+                }
+            }
+            state.elevationMarkers = [];
+            
+            // Add elevation markers along the route
+            var markerInterval = Math.max(1, Math.floor(route.profile.length / 6)); // Show 6 markers max
+            
+            for (var i = 0; i < route.profile.length; i += markerInterval) {
+                var coordIndex = Math.floor((i / (route.profile.length - 1)) * (routeCoords.length - 1));
+                var elevation = route.profile[i];
+                var elevationColor = getElevationColor(elevation);
+                var isHighElevation = elevation > state.elevationThreshold;
+                
+                var elevationIcon = L.divIcon({
+                    className: 'elevation-marker',
+                    html: '<div style="background: ' + elevationColor + '; color: white; padding: 2px 6px; border-radius: 8px; font-size: 10px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">' + elevation + 'ft</div>',
+                    iconSize: [50, 20],
+                    iconAnchor: [25, 10]
+                });
+                
+                var elevationMarker = L.marker(routeCoords[coordIndex], { icon: elevationIcon }).addTo(state.map);
+                
+                var markerPopupContent = 'Elevation: ' + elevation + ' ft<br>' +
+                    'Zone: ' + getElevationZoneName(elevation);
+                
+                if (isHighElevation) {
+                    markerPopupContent += '<br><strong style="color: #dc2626;">⚠️ Above Your Safe Limit (' + state.elevationThreshold + ' ft)</strong>';
+                }
+                
+                elevationMarker.bindPopup(markerPopupContent);
+                state.elevationMarkers.push(elevationMarker);
+            }
+        }
+
+        function getElevationZoneName(elevation) {
+            if (elevation <= 2000) {
+                return 'Low Elevation (Safe)';
+            } else if (elevation <= 4000) {
+                return 'Moderate Elevation';
+            } else if (elevation <= 6000) {
+                return 'High Elevation';
+            } else {
+                return 'Very High Elevation';
+            }
+        }
+
+        function generateRouteCoordinates(route, destination) {
+            var coords = [];
+            var startLat = state.currentLocation.lat;
+            var startLng = state.currentLocation.lng;
+            var endLat = destination.lat;
+            var endLng = destination.lng;
+            
+            var steps = 30; // More segments for better elevation color transition
+            
+            for (var i = 0; i <= steps; i++) {
+                var progress = i / steps;
+                var lat, lng;
+                
+                if (route.routeType === 'low_elevation') {
+                    // Valley route - more winding, follows lower terrain
+                    lat = startLat + (endLat - startLat) * progress + 
+                          (Math.sin(progress * Math.PI * 3) * 0.1) + 
+                          (Math.cos(progress * Math.PI * 2) * 0.05);
+                    lng = startLng + (endLng - startLng) * progress + 
+                          (Math.cos(progress * Math.PI * 4) * 0.15) + 
+                          (Math.sin(progress * Math.PI * 3) * 0.08);
+                } else if (route.routeType === 'fastest') {
+                    // Direct highway route - straighter line with minimal deviation
+                    lat = startLat + (endLat - startLat) * progress + 
+                          (Math.sin(progress * Math.PI) * 0.02);
+                    lng = startLng + (endLng - startLng) * progress + 
+                          (Math.cos(progress * Math.PI) * 0.03);
+                } else {
+                    // Balanced route - moderate curves
+                    lat = startLat + (endLat - startLat) * progress + 
+                          (Math.sin(progress * Math.PI * 2) * 0.06);
+                    lng = startLng + (endLng - startLng) * progress + 
+                          (Math.cos(progress * Math.PI * 2.5) * 0.07);
+                }
+                
+                coords.push([lat, lng]);
+            }
+            
+            return coords;
+        }
+
+        function selectRouteOption(routeId) {
+            console.log('Selecting route option:', routeId);
+            
+            // Find the route
+            var selectedRoute = null;
+            for (var i = 0; i < state.routes.length; i++) {
+                if (state.routes[i].id === routeId) {
+                    selectedRoute = state.routes[i];
+                    break;
+                }
+            }
+            
+            if (!selectedRoute) return;
+            
+            // Update visual appearance of all routes
+            for (var id in state.routeLines) {
+                var routeData = state.routeLines[id];
+                var route = state.routes.find(function(r) { return r.id == id; });
+                
+                if (parseInt(id) === routeId) {
+                    // Highlight selected route
+                    for (var j = 0; j < routeData.segments.length; j++) {
+                        routeData.segments[j].setStyle({
+                            opacity: 0.9,
+                            weight: 6,
+                            dashArray: null
                         });
                     }
-                },
-                lineOptions: {
-                    styles: [
-                        {color: '#2563eb', opacity: 0.8, weight: 6},
-                        {color: '#ffffff', opacity: 1, weight: 2}
-                    ]
+                    
+                    // Add elevation markers for selected route
+                    addElevationMarkers(selectedRoute, routeData.coords);
+                } else {
+                    // Dim non-selected routes
+                    for (var j = 0; j < routeData.segments.length; j++) {
+                        routeData.segments[j].setStyle({
+                            opacity: 0.3,
+                            weight: 4,
+                            dashArray: '10, 10'
+                        });
+                    }
                 }
-            }).on('routesfound', function(e) {
-                var routes = e.routes;
-                var summary = routes[0].summary;
-                console.log('Route found:', summary.totalDistance / 1000, 'km,', summary.totalTime / 60, 'minutes');
-            }).addTo(state.map);
+            }
+            
+            // Update route card selection visual
+            updateRouteCardSelection(routeId);
+            
+            // Store selected route
+            state.selectedRoute = selectedRoute;
+        }
+
+        function updateRouteCardSelection(selectedId) {
+            var routeCards = document.querySelectorAll('.route-card');
+            for (var i = 0; i < routeCards.length; i++) {
+                var card = routeCards[i];
+                var routeId = i + 1; // Route IDs start from 1
+                
+                if (routeId === selectedId) {
+                    card.style.border = '3px solid #2563eb';
+                    card.style.backgroundColor = '#eff6ff';
+                    card.style.transform = 'scale(1.02)';
+                    card.style.boxShadow = '0 4px 12px rgba(37, 99, 235, 0.3)';
+                } else {
+                    card.style.border = card.classList.contains('route-recommended') ? '2px solid #10b981' : '2px solid #e5e7eb';
+                    card.style.backgroundColor = card.classList.contains('route-recommended') ? '#f0fdf4' : 'white';
+                    card.style.transform = 'scale(1)';
+                    card.style.boxShadow = 'none';
+                }
+            }
+        }
+
+        function clearAllRoutesFromMap() {
+            // Clear existing route lines
+            if (state.routeLines) {
+                for (var id in state.routeLines) {
+                    state.map.removeLayer(state.routeLines[id].group);
+                }
+                state.routeLines = {};
+            }
+            
+            // Clear elevation markers
+            if (state.elevationMarkers) {
+                for (var i = 0; i < state.elevationMarkers.length; i++) {
+                    state.map.removeLayer(state.elevationMarkers[i]);
+                }
+                state.elevationMarkers = [];
+            }
+            
+            // Clear start/end markers
+            if (state.startMarker) {
+                state.map.removeLayer(state.startMarker);
+                state.startMarker = null;
+            }
+            if (state.endMarker) {
+                state.map.removeLayer(state.endMarker);
+                state.endMarker = null;
+            }
         }
 
         function displayRoutes() {
@@ -1025,8 +1324,13 @@
                 var routeEl = document.createElement('div');
                 routeEl.className = 'route-card' + (route.recommended ? ' route-recommended' : '');
                 
-                // Add click handler to show route on map
+                // Add click handler to select route on map
                 routeEl.style.cursor = 'pointer';
+                routeEl.onclick = function(routeData) {
+                    return function() {
+                        selectRouteOption(routeData.id);
+                    };
+                }(route);
                 
                 var profileHTML = '';
                 for (var j = 0; j < route.profile.length; j++) {
@@ -1047,6 +1351,7 @@
                             recommendedBadge +
                         '</div>' +
                         '<div style="display: flex; gap: 0.5rem;">' +
+                            '<button onclick="event.stopPropagation(); selectRouteOption(' + route.id + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; background: #059669;">Select</button>' +
                             '<button onclick="event.stopPropagation(); startNavigation(' + route.id + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Start</button>' +
                         '</div>' +
                     '</div>' +
@@ -1114,7 +1419,7 @@
 
         function nextDirection() {
             if (!state.currentDirections || state.currentStep >= state.currentDirections.length - 1) {
-                alert('Navigation complete! You have arrived at your destination.');
+                alert('🏁 Navigation Complete!\n\nYou have arrived at your destination safely.');
                 stopNavigation();
                 return;
             }
@@ -1129,11 +1434,25 @@
             
             // Check for elevation warnings
             if (direction.elevation > state.elevationThreshold) {
-                alert('ELEVATION WARNING!\n\nCurrent elevation: ' + direction.elevation + ' ft\nYour safe limit: ' + state.elevationThreshold + ' ft\n\nConsider taking a break or seeking lower elevation.');
+                var elevationZone = getElevationZoneName(direction.elevation);
+                alert('🚨 ELEVATION WARNING!\n\n' +
+                    'Current elevation: ' + direction.elevation + ' ft\n' +
+                    'Your safe limit: ' + state.elevationThreshold + ' ft\n' +
+                    'Zone: ' + elevationZone + '\n\n' +
+                    '⚠️ Consider taking a break or seeking lower elevation.\n' +
+                    '💨 Monitor your breathing carefully.');
             }
             
-            // Highlight current step in directions
+            // Update directions display to show progress
             displayDirections();
+            
+            // Scroll to current step
+            setTimeout(function() {
+                var currentStepEl = document.querySelector('[style*="border-left: 4px solid #2563eb"]');
+                if (currentStepEl) {
+                    currentStepEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
         }
 
         function displayDirections() {
@@ -1145,12 +1464,12 @@
             var route = state.selectedRoute;
             
             var html = '<div style="background: #f0fdf4; border: 2px solid #16a34a; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">' +
-                '<h4>' + route.name + ' - Turn-by-Turn Directions</h4>' +
+                '<h4>' + route.name + ' - Turn-by-Turn Navigation</h4>' +
                 '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem; font-size: 0.9rem;">' +
-                    '<div><strong>Distance:</strong> ' + route.distance + '</div>' +
-                    '<div><strong>Duration:</strong> ' + route.duration + '</div>' +
+                    '<div><strong>Total Distance:</strong> ' + route.distance + '</div>' +
+                    '<div><strong>Estimated Time:</strong> ' + route.duration + '</div>' +
                     '<div><strong>Max Elevation:</strong> ' + route.maxElevation + ' ft</div>' +
-                    '<div><strong>Elevation Gain:</strong> ' + route.elevationGain + ' ft</div>' +
+                    '<div><strong>Route Type:</strong> ' + getRouteTypeDescription(route.routeType) + '</div>' +
                 '</div>' +
                 '</div>';
             
@@ -1160,28 +1479,97 @@
                     '</div>';
             }
             
+            // Add current position indicator if navigating
+            if (state.isNavigating && state.currentStep < state.currentDirections.length) {
+                var currentDirection = state.currentDirections[state.currentStep];
+                html += '<div style="background: #2563eb; color: white; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">' +
+                    '<div style="display: flex; align-items: center; gap: 1rem;">' +
+                        '<div style="font-size: 2rem;">🧭</div>' +
+                        '<div>' +
+                            '<div style="font-weight: bold; font-size: 1.1rem;">CURRENT: ' + currentDirection.instruction + '</div>' +
+                            '<div style="font-size: 0.9rem; opacity: 0.9;">' + currentDirection.details + '</div>' +
+                            '<div style="display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.9rem;">' +
+                                '<span>📏 ' + currentDirection.distance + '</span>' +
+                                '<span>⏱️ ' + currentDirection.estimatedTime + '</span>' +
+                                '<span style="color: ' + getElevationColor(currentDirection.elevation) + ';">⛰️ ' + currentDirection.elevation + ' ft</span>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            }
+            
             for (var i = 0; i < state.currentDirections.length; i++) {
                 var direction = state.currentDirections[i];
-                var isCurrentStep = i === state.currentStep;
-                var elevationClass = direction.elevation > state.elevationThreshold ? 'color: #dc2626; font-weight: bold;' : 'color: #059669;';
+                var isCurrentStep = i === state.currentStep && state.isNavigating;
+                var isCompleted = i < state.currentStep && state.isNavigating;
+                var elevationColor = getElevationColor(direction.elevation);
+                var elevationZone = getElevationZoneName(direction.elevation);
+                
+                var stepBackgroundColor = '';
+                var stepTextColor = '#333';
+                var stepBorderLeft = '';
+                
+                if (isCurrentStep) {
+                    stepBackgroundColor = '#eff6ff';
+                    stepBorderLeft = '4px solid #2563eb';
+                } else if (isCompleted) {
+                    stepBackgroundColor = '#f0fdf4';
+                    stepBorderLeft = '4px solid #16a34a';
+                    stepTextColor = '#6b7280';
+                }
+                
+                var directionIcon = getDirectionIcon(direction.instruction);
                 
                 html += '<div style="display: flex; padding: 1rem; border-bottom: 1px solid #e5e7eb; ' + 
-                    (isCurrentStep ? 'background: #eff6ff; border-left: 4px solid #2563eb;' : '') + '">' +
-                    '<div style="background: ' + (isCurrentStep ? '#2563eb' : '#6b7280') + '; color: white; width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 1rem;">' + direction.step + '</div>' +
+                    'background: ' + stepBackgroundColor + '; ' + stepBorderLeft + '; color: ' + stepTextColor + ';">' +
+                    '<div style="background: ' + (isCurrentStep ? '#2563eb' : isCompleted ? '#16a34a' : '#6b7280') + '; color: white; width: 2.5rem; height: 2.5rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 1rem; font-size: 0.9rem;">' + 
+                        (isCompleted ? '✓' : direction.step) + 
+                    '</div>' +
                     '<div style="flex: 1;">' +
-                        '<div style="font-weight: bold; font-size: 1rem;">' + direction.instruction + '</div>' +
-                        '<div style="color: #6b7280; font-size: 0.9rem; margin: 0.25rem 0;">' + direction.details + '</div>' +
-                        '<div style="display: flex; gap: 1rem; font-size: 0.9rem;">' +
-                            '<span style="color: #2563eb;">Distance: ' + direction.distance + '</span>' +
-                            '<span style="color: #059669;">Time: ' + direction.estimatedTime + '</span>' +
-                            '<span style="' + elevationClass + '">Elevation: ' + direction.elevation + ' ft</span>' +
+                        '<div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">' +
+                            '<span style="font-size: 1.2rem;">' + directionIcon + '</span>' +
+                            '<div style="font-weight: bold; font-size: 1rem;">' + direction.instruction + '</div>' +
                         '</div>' +
+                        '<div style="color: #6b7280; font-size: 0.9rem; margin: 0.25rem 0;">' + direction.details + '</div>' +
+                        '<div style="display: flex; gap: 1rem; font-size: 0.9rem; flex-wrap: wrap;">' +
+                            '<span style="color: #2563eb; font-weight: 500;">📏 ' + direction.distance + '</span>' +
+                            '<span style="color: #059669; font-weight: 500;">⏱️ ' + direction.estimatedTime + '</span>' +
+                            '<span style="color: ' + elevationColor + '; font-weight: 500;">⛰️ ' + direction.elevation + ' ft</span>' +
+                            '<span style="color: ' + elevationColor + '; font-size: 0.8rem;">(' + elevationZone + ')</span>' +
+                        '</div>' +
+                        (direction.elevation > state.elevationThreshold ? 
+                            '<div style="background: #fef2f2; color: #dc2626; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.8rem; font-weight: bold;">⚠️ Above your safe elevation limit</div>' : '') +
                     '</div>' +
                 '</div>';
             }
             
             container.innerHTML = html;
             directionsSection.classList.remove('hidden');
+        }
+
+        function getRouteTypeDescription(routeType) {
+            switch(routeType) {
+                case 'low_elevation': return 'Valley Roads';
+                case 'fastest': return 'Highway/Interstate';
+                case 'balanced': return 'Scenic Route';
+                default: return 'Mixed Roads';
+            }
+        }
+
+        function getDirectionIcon(instruction) {
+            var lowerInstruction = instruction.toLowerCase();
+            
+            if (lowerInstruction.includes('left')) return '↰';
+            if (lowerInstruction.includes('right')) return '↱';
+            if (lowerInstruction.includes('straight') || lowerInstruction.includes('continue')) return '↑';
+            if (lowerInstruction.includes('merge')) return '🛣️';
+            if (lowerInstruction.includes('exit')) return '🛤️';
+            if (lowerInstruction.includes('arrive')) return '🏁';
+            if (lowerInstruction.includes('head')) return '🧭';
+            if (lowerInstruction.includes('fork') || lowerInstruction.includes('bear')) return '🍴';
+            if (lowerInstruction.includes('descent') || lowerInstruction.includes('descend')) return '↘️';
+            
+            return '➡️';
         }
 
         function printDirections() {
@@ -1227,35 +1615,63 @@
         function generateDirections(route, destination) {
             var directions = [];
             
-            if (route.name === 'Lowest Elevation Route') {
-                directions = [
-                    { step: 1, instruction: "Head north on local roads", distance: "0.3 mi", elevation: 285, details: "Start from your current location using surface streets", estimatedTime: "2 min" },
-                    { step: 2, instruction: "Continue on Valley Rd", distance: "15.2 mi", elevation: 320, details: "Follow valley roads avoiding steep climbs", estimatedTime: "25 min" },
-                    { step: 3, instruction: "Take scenic route via Lower Canyon Dr", distance: "23.1 mi", elevation: 450, details: "Winding road through canyon with gradual elevation change", estimatedTime: "35 min" },
-                    { step: 4, instruction: "Continue on Riverside Rd", distance: "18.4 mi", elevation: 680, details: "Follow river valley to maintain low elevation", estimatedTime: "28 min" },
-                    { step: 5, instruction: "Turn onto Foothill Rd", distance: "12.7 mi", elevation: 920, details: "Foothills route staying below major peaks", estimatedTime: "18 min" },
-                    { step: 6, instruction: "Arrive at " + destination, distance: "3.2 mi", elevation: 850, details: "Final approach to destination", estimatedTime: "6 min" }
-                ];
-            } else if (route.name === 'Fastest Route') {
-                directions = [
-                    { step: 1, instruction: "Head to highway entrance", distance: "0.5 mi", elevation: 285, details: "Start from current location to highway access", estimatedTime: "1 min" },
-                    { step: 2, instruction: "Merge onto Interstate", distance: "25.4 mi", elevation: 800, details: "Take highway for fastest route", estimatedTime: "22 min" },
-                    { step: 3, instruction: "Continue through mountain pass", distance: "32.6 mi", elevation: 3200, details: "WARNING: High elevation section", estimatedTime: "28 min" },
-                    { step: 4, instruction: "Take exit for destination", distance: "8.1 mi", elevation: 2800, details: "Exit highway and follow local roads", estimatedTime: "12 min" },
-                    { step: 5, instruction: "Arrive at " + destination, distance: "2.3 mi", elevation: 2400, details: "Final approach to destination", estimatedTime: "4 min" }
-                ];
+            // Generate directions based on the selected route type
+            if (route.routeType === 'low_elevation') {
+                directions = generateLowElevationDirections(route, destination);
+            } else if (route.routeType === 'fastest') {
+                directions = generateFastestRouteDirections(route, destination);
             } else {
-                directions = [
-                    { step: 1, instruction: "Head north on main road", distance: "0.4 mi", elevation: 285, details: "Start from current location", estimatedTime: "2 min" },
-                    { step: 2, instruction: "Take scenic coastal route", distance: "18.9 mi", elevation: 600, details: "Beautiful views with moderate elevation", estimatedTime: "28 min" },
-                    { step: 3, instruction: "Continue inland via Canyon View Dr", distance: "22.2 mi", elevation: 1400, details: "Scenic canyon road with gradual climb", estimatedTime: "32 min" },
-                    { step: 4, instruction: "Follow ridge road", distance: "16.8 mi", elevation: 2200, details: "Ridge route with panoramic views", estimatedTime: "24 min" },
-                    { step: 5, instruction: "Descend to destination area", distance: "8.7 mi", elevation: 1800, details: "Gradual descent to destination", estimatedTime: "14 min" },
-                    { step: 6, instruction: "Arrive at " + destination, distance: "2.1 mi", elevation: 1600, details: "Final approach", estimatedTime: "4 min" }
-                ];
+                directions = generateBalancedRouteDirections(route, destination);
             }
             
             return directions;
+        }
+
+        function generateLowElevationDirections(route, destination) {
+            return [
+                { step: 1, instruction: "Head north on local surface streets", distance: "0.4 mi", elevation: 285, details: "Start from your current location avoiding highways", estimatedTime: "2 min" },
+                { step: 2, instruction: "Turn right onto Valley View Road", distance: "2.8 mi", elevation: 320, details: "Follow Valley View Road through residential area", estimatedTime: "6 min" },
+                { step: 3, instruction: "Continue straight on Old Ranch Road", distance: "8.2 mi", elevation: 380, details: "Stay on Old Ranch Road, avoiding highway on-ramps", estimatedTime: "18 min" },
+                { step: 4, instruction: "Turn left onto River Valley Drive", distance: "12.5 mi", elevation: 450, details: "Winding road through canyon following the river", estimatedTime: "28 min" },
+                { step: 5, instruction: "Bear right at fork to stay on Lower Canyon Road", distance: "9.7 mi", elevation: 680, details: "Take the lower fork to avoid steep mountain climb", estimatedTime: "22 min" },
+                { step: 6, instruction: "Turn right onto Meadowbrook Lane", distance: "6.3 mi", elevation: 920, details: "Rural road through valley meadows", estimatedTime: "14 min" },
+                { step: 7, instruction: "Continue on Foothill Boulevard", distance: "8.9 mi", elevation: 1100, details: "Follow foothills staying below major peaks", estimatedTime: "20 min" },
+                { step: 8, instruction: "Turn left onto Creek Side Road", distance: "4.2 mi", elevation: 950, details: "Descent following creek bed", estimatedTime: "9 min" },
+                { step: 9, instruction: "Turn right onto destination street", distance: "1.8 mi", elevation: 850, details: "Final approach through local neighborhoods", estimatedTime: "4 min" },
+                { step: 10, instruction: "Arrive at " + destination, distance: "0.2 mi", elevation: 820, details: "You have reached your destination", estimatedTime: "1 min" }
+            ];
+        }
+
+        function generateFastestRouteDirections(route, destination) {
+            return [
+                { step: 1, instruction: "Head to highway entrance ramp", distance: "0.3 mi", elevation: 285, details: "Navigate to nearest highway access point", estimatedTime: "1 min" },
+                { step: 2, instruction: "Merge onto I-405 North", distance: "1.2 mi", elevation: 350, details: "Take I-405 North on-ramp, accelerate to highway speed", estimatedTime: "2 min" },
+                { step: 3, instruction: "Continue on I-405 North for 18 miles", distance: "18.4 mi", elevation: 800, details: "Stay in right lanes, moderate traffic expected", estimatedTime: "16 min" },
+                { step: 4, instruction: "Take Exit 47B for SR-14 North", distance: "0.8 mi", elevation: 1200, details: "Take the SR-14 North exit toward mountain regions", estimatedTime: "2 min" },
+                { step: 5, instruction: "Merge onto SR-14 North (Antelope Valley Freeway)", distance: "22.1 mi", elevation: 2800, details: "Major highway through mountain pass - elevation climbing", estimatedTime: "19 min" },
+                { step: 6, instruction: "Take Exit 28 for Mountain View Road", distance: "1.1 mi", elevation: 4200, details: "WARNING: High elevation area - monitor breathing", estimatedTime: "2 min" },
+                { step: 7, instruction: "Continue on Mountain View Road", distance: "8.7 mi", elevation: 5800, details: "CAUTION: Peak elevation section - consider rest stops", estimatedTime: "12 min" },
+                { step: 8, instruction: "Turn right onto Summit Drive", distance: "3.4 mi", elevation: 6200, details: "Highest point of journey - take breaks if needed", estimatedTime: "6 min" },
+                { step: 9, instruction: "Begin descent on Highland Avenue", distance: "6.2 mi", elevation: 4800, details: "Steep descent from mountain pass", estimatedTime: "8 min" },
+                { step: 10, instruction: "Turn left onto destination boulevard", distance: "2.3 mi", elevation: 3200, details: "Final approach to destination area", estimatedTime: "4 min" },
+                { step: 11, instruction: "Arrive at " + destination, distance: "0.4 mi", elevation: 2900, details: "You have reached your destination", estimatedTime: "1 min" }
+            ];
+        }
+
+        function generateBalancedRouteDirections(route, destination) {
+            return [
+                { step: 1, instruction: "Head northwest on Main Street", distance: "0.5 mi", elevation: 285, details: "Start from current location toward scenic route", estimatedTime: "2 min" },
+                { step: 2, instruction: "Turn right onto Coastal Highway 1", distance: "12.3 mi", elevation: 420, details: "Beautiful coastal views with moderate elevation", estimatedTime: "22 min" },
+                { step: 3, instruction: "Continue straight through Malibu", distance: "8.6 mi", elevation: 380, details: "Follow PCH through coastal communities", estimatedTime: "16 min" },
+                { step: 4, instruction: "Turn left onto Topanga Canyon Boulevard", distance: "6.8 mi", elevation: 850, details: "Winding canyon road with gradual elevation gain", estimatedTime: "14 min" },
+                { step: 5, instruction: "Bear right onto Mulholland Drive", distance: "9.2 mi", elevation: 1400, details: "Scenic ridge road with panoramic views", estimatedTime: "18 min" },
+                { step: 6, instruction: "Take slight left onto Laurel Canyon Boulevard", distance: "4.7 mi", elevation: 1100, details: "Descent through Hollywood Hills", estimatedTime: "10 min" },
+                { step: 7, instruction: "Turn right onto Ventura Boulevard", distance: "7.8 mi", elevation: 650, details: "Major east-west arterial through valley", estimatedTime: "15 min" },
+                { step: 8, instruction: "Continue on Ventura Blvd for 5 miles", distance: "5.1 mi", elevation: 580, details: "Stay on Ventura through Sherman Oaks", estimatedTime: "12 min" },
+                { step: 9, instruction: "Turn left onto Reseda Boulevard", distance: "3.9 mi", elevation: 720, details: "Head north through suburban neighborhoods", estimatedTime: "8 min" },
+                { step: 10, instruction: "Turn right onto destination street", distance: "2.2 mi", elevation: 680, details: "Final approach to destination", estimatedTime: "5 min" },
+                { step: 11, instruction: "Arrive at " + destination, distance: "0.3 mi", elevation: 650, details: "You have reached your destination", estimatedTime: "1 min" }
+            ];
         }
 
         function stopNavigation() {

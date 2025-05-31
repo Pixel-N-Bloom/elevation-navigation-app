@@ -1,4 +1,4 @@
-        <!-- Quick Actions -->
+<!-- Quick Actions -->
         <div class="section">
             <h3 style="margin-bottom: 0.5rem;">Quick Actions</h3>
             <button onclick="getCurrentLocation()" style="width: 100%; margin-bottom: 0.5rem;">
@@ -659,29 +659,30 @@
         }
 
         function generateRouteCoordinates(route) {
-            // Generate realistic route coordinates based on start location and route type
+            // Generate realistic route coordinates based on route type and actual destination
             var coords = [];
             var startLat = state.currentLocation.lat;
             var startLng = state.currentLocation.lng;
+            var destCoords = getDestinationCoords(state.destination);
             
-            // Create a route path based on route characteristics
-            var steps = 20; // Number of coordinate points along route
+            var steps = 25; // More detailed route
             
             for (var i = 0; i <= steps; i++) {
                 var progress = i / steps;
+                var lat, lng;
                 
-                if (route.name === 'Lowest Elevation Route') {
-                    // Valley route - follows lower terrain
-                    var lat = startLat + (progress * 0.5) - (Math.sin(progress * Math.PI) * 0.1);
-                    var lng = startLng + (progress * 0.8) + (Math.cos(progress * Math.PI * 2) * 0.05);
-                } else if (route.name === 'Fastest Route') {
-                    // Highway route - more direct but through mountains
-                    var lat = startLat + (progress * 0.6);
-                    var lng = startLng + (progress * 0.7);
+                if (route.routeType === 'low_elevation') {
+                    // Valley route - follows lower terrain, more winding
+                    lat = startLat + (destCoords.lat - startLat) * progress + (Math.sin(progress * Math.PI * 4) * 0.05);
+                    lng = startLng + (destCoords.lng - startLng) * progress + (Math.cos(progress * Math.PI * 3) * 0.08);
+                } else if (route.routeType === 'fastest') {
+                    // Direct highway route
+                    lat = startLat + (destCoords.lat - startLat) * progress + (Math.random() - 0.5) * 0.02;
+                    lng = startLng + (destCoords.lng - startLng) * progress + (Math.random() - 0.5) * 0.02;
                 } else {
-                    // Scenic route - winding path
-                    var lat = startLat + (progress * 0.4) + (Math.sin(progress * Math.PI * 3) * 0.1);
-                    var lng = startLng + (progress * 0.9) + (Math.cos(progress * Math.PI * 2) * 0.08);
+                    // Balanced route - moderate curves
+                    lat = startLat + (destCoords.lat - startLat) * progress + (Math.sin(progress * Math.PI * 2) * 0.03);
+                    lng = startLng + (destCoords.lng - startLng) * progress + (Math.cos(progress * Math.PI * 2) * 0.04);
                 }
                 
                 coords.push([lat, lng]);
@@ -780,56 +781,181 @@
             routesSection.classList.remove('hidden');
             container.innerHTML = '<div style="text-align: center; padding: 2rem; color: #6b7280;">Calculating elevation-aware routes...</div>';
             
-            // Simulate route calculation
+            // Simulate route calculation with dynamic data based on actual routing
             setTimeout(function() {
-                state.routes = [
-                    {
-                        id: 1,
-                        name: 'Lowest Elevation Route',
-                        distance: '186 miles',
-                        duration: '19h 25m',
-                        maxElevation: 3200,
-                        elevationGain: 1800,
-                        recommended: true,
-                        profile: [285, 450, 680, 1200, 2100, 3200, 2800, 1900, 1200, 800, 450],
-                        avgSpeed: 9.6,
-                        description: 'Avoids highways, follows valley roads and back roads to minimize elevation gain'
-                    },
-                    {
-                        id: 2,
-                        name: 'Fastest Route',
-                        distance: '128 miles',
-                        duration: '2h 15m',
-                        maxElevation: 6500,
-                        elevationGain: 4200,
-                        recommended: false,
-                        profile: [285, 800, 2100, 4500, 6500, 5200, 3800, 2100, 900, 450],
-                        avgSpeed: 56.9,
-                        description: 'Direct highway route through mountain passes - fastest but highest elevation'
-                    },
-                    {
-                        id: 3,
-                        name: 'Balanced Route',
-                        distance: '152 miles',
-                        duration: '4h 35m',
-                        maxElevation: 4800,
-                        elevationGain: 2900,
-                        recommended: false,
-                        profile: [285, 600, 1200, 2800, 4800, 3900, 2400, 1500, 800, 400],
-                        avgSpeed: 33.1,
-                        description: 'Moderate elevation gain with reasonable travel time'
-                    }
-                ];
+                state.routes = generateDynamicRoutes(state.currentLocation, destination);
                 
                 displayRoutes();
                 console.log('Routes calculated');
                 
-                // If map is visible and routes are available, show first route on map
+                // If map is visible, show recommended route by default
                 if (state.mapVisible && state.routes.length > 0) {
                     var recommendedRoute = state.routes.find(function(r) { return r.recommended; }) || state.routes[0];
                     addRouteToMap(recommendedRoute);
                 }
             }, 1500);
+        }
+
+        function generateDynamicRoutes(origin, destination) {
+            // Calculate approximate distance and elevation changes based on coordinates
+            var distance = calculateDistance(origin.lat, origin.lng, getDestinationCoords(destination));
+            var elevationData = calculateElevationProfile(origin, destination);
+            
+            return [
+                {
+                    id: 1,
+                    name: 'Lowest Elevation Route',
+                    distance: Math.round(distance * 1.45) + ' miles',
+                    duration: calculateTravelTime(distance * 1.45, 25),
+                    maxElevation: elevationData.low.maxElevation,
+                    elevationGain: elevationData.low.elevationGain,
+                    recommended: true,
+                    profile: elevationData.low.profile,
+                    avgSpeed: 25,
+                    description: 'Follows valley roads and avoids mountain passes. Longest route but safest for respiratory conditions.',
+                    routeType: 'low_elevation'
+                },
+                {
+                    id: 2,
+                    name: 'Fastest Route',
+                    distance: Math.round(distance) + ' miles',
+                    duration: calculateTravelTime(distance, 65),
+                    maxElevation: elevationData.fast.maxElevation,
+                    elevationGain: elevationData.fast.elevationGain,
+                    recommended: false,
+                    profile: elevationData.fast.profile,
+                    avgSpeed: 65,
+                    description: 'Direct highway route through mountain passes. Fastest but highest elevation exposure.',
+                    routeType: 'fastest'
+                },
+                {
+                    id: 3,
+                    name: 'Balanced Route',
+                    distance: Math.round(distance * 1.2) + ' miles',
+                    duration: calculateTravelTime(distance * 1.2, 45),
+                    maxElevation: elevationData.balanced.maxElevation,
+                    elevationGain: elevationData.balanced.elevationGain,
+                    recommended: false,
+                    profile: elevationData.balanced.profile,
+                    avgSpeed: 45,
+                    description: 'Moderate elevation with reasonable travel time. Good compromise between speed and safety.',
+                    routeType: 'balanced'
+                }
+            ];
+        }
+
+        function calculateDistance(lat1, lng1, coords2) {
+            // Haversine formula for distance calculation
+            var R = 3959; // Earth's radius in miles
+            var dLat = (coords2.lat - lat1) * Math.PI / 180;
+            var dLng = (coords2.lng - lng1) * Math.PI / 180;
+            var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(coords2.lat * Math.PI / 180) *
+                    Math.sin(dLng/2) * Math.sin(dLng/2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function getDestinationCoords(destination) {
+            // Mock destination coordinates based on common cities
+            var destinations = {
+                'san francisco': { lat: 37.7749, lng: -122.4194 },
+                'denver': { lat: 39.7392, lng: -104.9903 },
+                'seattle': { lat: 47.6062, lng: -122.3321 },
+                'phoenix': { lat: 33.4484, lng: -112.0740 },
+                'chicago': { lat: 41.8781, lng: -87.6298 },
+                'new york': { lat: 40.7128, lng: -74.0060 },
+                'miami': { lat: 25.7617, lng: -80.1918 },
+                'las vegas': { lat: 36.1699, lng: -115.1398 },
+                'salt lake city': { lat: 40.7608, lng: -111.8910 },
+                'flagstaff': { lat: 35.1983, lng: -111.6513 }
+            };
+            
+            var key = destination.toLowerCase();
+            for (var city in destinations) {
+                if (key.includes(city) || city.includes(key)) {
+                    return destinations[city];
+                }
+            }
+            
+            // Default to coordinates based on direction from current location
+            return {
+                lat: state.currentLocation.lat + (Math.random() - 0.5) * 2,
+                lng: state.currentLocation.lng + (Math.random() - 0.5) * 2
+            };
+        }
+
+        function calculateElevationProfile(origin, destination) {
+            var startElev = origin.elevation;
+            var destCoords = getDestinationCoords(destination);
+            var destElev = estimateElevation(destCoords.lat, destCoords.lng);
+            
+            return {
+                low: {
+                    maxElevation: Math.round(Math.max(startElev, destElev) + 500),
+                    elevationGain: Math.round(Math.abs(destElev - startElev) + 300),
+                    profile: generateElevationProfile(startElev, destElev, 'low', 15)
+                },
+                fast: {
+                    maxElevation: Math.round(Math.max(startElev, destElev) + 2500),
+                    elevationGain: Math.round(Math.abs(destElev - startElev) + 1800),
+                    profile: generateElevationProfile(startElev, destElev, 'fast', 15)
+                },
+                balanced: {
+                    maxElevation: Math.round(Math.max(startElev, destElev) + 1200),
+                    elevationGain: Math.round(Math.abs(destElev - startElev) + 900),
+                    profile: generateElevationProfile(startElev, destElev, 'balanced', 15)
+                }
+            };
+        }
+
+        function generateElevationProfile(startElev, endElev, routeType, points) {
+            var profile = [];
+            
+            for (var i = 0; i <= points; i++) {
+                var progress = i / points;
+                var baseElev = startElev + (endElev - startElev) * progress;
+                
+                if (routeType === 'low') {
+                    // Valley route - stays low with minimal peaks
+                    var variation = Math.sin(progress * Math.PI * 2) * 200 + Math.random() * 100;
+                    profile.push(Math.max(startElev - 100, baseElev + variation));
+                } else if (routeType === 'fast') {
+                    // Mountain route - goes over peaks
+                    var peak = Math.sin(progress * Math.PI) * 2000;
+                    profile.push(baseElev + peak + Math.random() * 300);
+                } else {
+                    // Balanced route - moderate hills
+                    var hills = Math.sin(progress * Math.PI * 3) * 600 + Math.random() * 200;
+                    profile.push(baseElev + hills);
+                }
+            }
+            
+            return profile.map(function(elev) { return Math.round(Math.max(0, elev)); });
+        }
+
+        function estimateElevation(lat, lng) {
+            // Estimate elevation based on geographic patterns
+            if (lng < -115) {
+                return Math.round(50 + Math.random() * 400); // West Coast
+            } else if (lng < -105) {
+                return Math.round(3000 + Math.random() * 3000); // Mountain West
+            } else if (lng < -95) {
+                return Math.round(1000 + Math.random() * 1500); // Plains
+            } else {
+                return Math.round(100 + Math.random() * 800); // East Coast
+            }
+        }
+
+        function calculateTravelTime(distance, avgSpeed) {
+            var hours = distance / avgSpeed;
+            var h = Math.floor(hours);
+            var m = Math.round((hours - h) * 60);
+            
+            if (h === 0) {
+                return m + 'm';
+            }
+            return h + 'h ' + (m > 0 ? m + 'm' : '');
         }
 
         function displayRoutes() {
@@ -846,9 +972,7 @@
                 // Add click handler to show route on map
                 routeEl.style.cursor = 'pointer';
                 routeEl.onclick = function() {
-                    if (state.mapVisible) {
-                        addRouteToMap(route);
-                    }
+                    selectRoute(route);
                 };
                 
                 var profileHTML = '';
@@ -870,8 +994,8 @@
                             recommendedBadge +
                         '</div>' +
                         '<div style="display: flex; gap: 0.5rem;">' +
-                            (state.mapVisible ? '<button onclick="event.stopPropagation(); addRouteToMap(' + JSON.stringify(route).replace(/"/g, '&quot;') + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; background: #059669;">Map</button>' : '') +
-                            '<button onclick="startNavigation(' + route.id + ')">Start</button>' +
+                            '<button onclick="event.stopPropagation(); selectRoute(' + JSON.stringify(route).replace(/"/g, '&quot;') + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; background: #059669;">Select</button>' +
+                            '<button onclick="event.stopPropagation(); startNavigation(' + route.id + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Start</button>' +
                         '</div>' +
                     '</div>' +
                     '<div class="route-details">' +
@@ -892,6 +1016,37 @@
             section.classList.remove('hidden');
         }
 
+        function selectRoute(route) {
+            console.log('Route selected:', route.name);
+            
+            // Show map if not visible
+            if (!state.mapVisible) {
+                toggleMap();
+                setTimeout(function() {
+                    addRouteToMap(route);
+                }, 200);
+            } else {
+                addRouteToMap(route);
+            }
+            
+            // Update route selection visual feedback
+            updateRouteSelection(route.id);
+        }
+
+        function updateRouteSelection(selectedId) {
+            var routeCards = document.querySelectorAll('.route-card');
+            for (var i = 0; i < routeCards.length; i++) {
+                var card = routeCards[i];
+                if (i + 1 === selectedId) {
+                    card.style.border = '3px solid #2563eb';
+                    card.style.backgroundColor = '#eff6ff';
+                } else {
+                    card.style.border = card.classList.contains('route-recommended') ? '2px solid #10b981' : '2px solid #e5e7eb';
+                    card.style.backgroundColor = card.classList.contains('route-recommended') ? '#f0fdf4' : 'white';
+                }
+            }
+        }
+
         function startNavigation(routeId) {
             var route = null;
             for (var i = 0; i < state.routes.length; i++) {
@@ -908,39 +1063,25 @@
             
             console.log('Starting navigation:', route.name);
             
-            // Show map if not already visible
-            if (!state.mapVisible) {
-                toggleMap();
-            }
-            
-            // Add the selected route to map
-            setTimeout(function() {
-                addRouteToMap(route);
-            }, 100);
-            
-            // Generate step-by-step directions
-            var directions = generateDirections(route, state.destination);
-            
-            // Create the directions page HTML
-            var directionsHTML = createDirectionsPage(route, directions);
-            
-            // Open new window/tab with directions
-            var newWindow = window.open('', '_blank');
-            newWindow.document.write(directionsHTML);
-            newWindow.document.close();
+            // Select and highlight the route on map
+            selectRoute(route);
             
             // Update current app state
             state.isNavigating = true;
-            document.getElementById('nav-status').classList.remove('hidden');
+            state.selectedRoute = route;
             
-            // Update navigation status with route info
+            // Show navigation status
             var navStatus = document.getElementById('nav-status');
+            navStatus.classList.remove('hidden');
             navStatus.innerHTML = 
                 '<div>' +
                     '<div style="font-weight: bold;">Navigating: ' + route.name + '</div>' +
                     '<div style="font-size: 0.9rem;">' + route.distance + ' • ' + route.duration + ' • Max: ' + route.maxElevation + ' ft</div>' +
                 '</div>' +
                 '<button onclick="stopNavigation()" style="background: #dc2626;">Stop</button>';
+            
+            // Scroll to top to show the route on map
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function generateDirections(route, destination) {

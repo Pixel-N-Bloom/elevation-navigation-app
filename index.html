@@ -288,7 +288,7 @@
         console.log('Elevation Navigation starting...');
         
         // App State
-        let state = {
+        var state = {
             currentLocation: { lat: 34.0522, lng: -118.2437, elevation: 285 },
             elevationThreshold: 8000,
             destination: '',
@@ -319,8 +319,8 @@
         }
 
         function checkPWA() {
-            const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
-                         window.navigator.standalone === true;
+            var isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                       window.navigator.standalone === true;
             
             state.isPWA = isPWA;
             
@@ -331,10 +331,10 @@
         }
 
         function loadSavedData() {
-            const saved = localStorage.getItem('elevation_nav_data');
+            var saved = localStorage.getItem('elevation_nav_data');
             if (saved) {
                 try {
-                    const data = JSON.parse(saved);
+                    var data = JSON.parse(saved);
                     state.elevationThreshold = data.threshold || 8000;
                     state.offlineDataDownloaded = data.offlineData || false;
                     console.log('Loaded saved data');
@@ -345,7 +345,7 @@
         }
 
         function saveData() {
-            const data = {
+            var data = {
                 threshold: state.elevationThreshold,
                 offlineData: state.offlineDataDownloaded
             };
@@ -358,7 +358,7 @@
                 updateDisplay();
                 
                 navigator.geolocation.getCurrentPosition(
-                    (position) => {
+                    function(position) {
                         state.currentLocation = {
                             lat: position.coords.latitude,
                             lng: position.coords.longitude,
@@ -368,7 +368,7 @@
                         updateDisplay();
                         console.log('GPS connected:', state.currentLocation);
                     },
-                    (error) => {
+                    function(error) {
                         state.gpsStatus = 'error';
                         updateDisplay();
                         console.log('GPS error:', error);
@@ -396,8 +396,8 @@
 
         function updateDisplay() {
             // Update GPS status
-            const gpsStatusEl = document.getElementById('gps-status');
-            const statusDotEl = document.getElementById('status-dot');
+            var gpsStatusEl = document.getElementById('gps-status');
+            var statusDotEl = document.getElementById('status-dot');
             
             switch (state.gpsStatus) {
                 case 'connected':
@@ -418,7 +418,7 @@
             updateElevationDisplay();
             
             // Update offline button
-            const offlineBtn = document.getElementById('offline-btn');
+            var offlineBtn = document.getElementById('offline-btn');
             if (state.offlineDataDownloaded) {
                 offlineBtn.textContent = 'Offline Maps Downloaded';
                 offlineBtn.disabled = true;
@@ -426,13 +426,13 @@
         }
 
         function updateElevationDisplay() {
-            const elevation = state.currentLocation.elevation;
-            const threshold = state.elevationThreshold;
+            var elevation = state.currentLocation.elevation;
+            var threshold = state.elevationThreshold;
             
-            const statusCard = document.getElementById('elevation-status');
-            const elevationValue = document.getElementById('elevation-value');
-            const thresholdValue = document.getElementById('threshold-value');
-            const warningIcon = document.getElementById('warning-icon');
+            var statusCard = document.getElementById('elevation-status');
+            var elevationValue = document.getElementById('elevation-value');
+            var thresholdValue = document.getElementById('threshold-value');
+            var warningIcon = document.getElementById('warning-icon');
             
             elevationValue.textContent = Math.round(elevation) + ' ft';
             thresholdValue.textContent = threshold;
@@ -453,7 +453,7 @@
         }
 
         function calculateRoutes() {
-            const destination = document.getElementById('destination').value.trim();
+            var destination = document.getElementById('destination').value.trim();
             if (!destination) {
                 alert('Please enter a destination!');
                 return;
@@ -463,14 +463,14 @@
             console.log('Calculating routes to:', destination);
             
             // Show loading state
-            const routesSection = document.getElementById('routes-section');
-            const container = document.getElementById('routes-container');
+            var routesSection = document.getElementById('routes-section');
+            var container = document.getElementById('routes-container');
             
             routesSection.classList.remove('hidden');
             container.innerHTML = '<div style="text-align: center; padding: 2rem; color: #6b7280;">Calculating elevation-aware routes...</div>';
             
             // Simulate route calculation
-            setTimeout(() => {
+            setTimeout(function() {
                 state.routes = [
                     {
                         id: 1,
@@ -510,61 +510,77 @@
         }
 
         function displayRoutes() {
-            const container = document.getElementById('routes-container');
-            const section = document.getElementById('routes-section');
+            var container = document.getElementById('routes-container');
+            var section = document.getElementById('routes-section');
             
             container.innerHTML = '';
             
-            state.routes.forEach(route => {
-                const routeEl = document.createElement('div');
+            for (var i = 0; i < state.routes.length; i++) {
+                var route = state.routes[i];
+                var routeEl = document.createElement('div');
                 routeEl.className = 'route-card' + (route.recommended ? ' route-recommended' : '');
                 
-                routeEl.innerHTML = `
-                    <div class="route-header">
-                        <div>
-                            <h4 style="margin-bottom: 0.25rem;">${route.name}</h4>
-                            ${route.recommended ? '<span class="badge">RECOMMENDED</span>' : ''}
-                        </div>
-                        <button onclick="startNavigation(${route.id})">Start</button>
-                    </div>
-                    <div class="route-details">
-                        <div>Distance: ${route.distance}</div>
-                        <div>Time: ${route.duration}</div>
-                        <div style="${route.maxElevation > state.elevationThreshold ? 'color: #dc2626; font-weight: bold;' : ''}">
-                            Max: ${route.maxElevation} ft
-                        </div>
-                        <div>Gain: ${route.elevationGain} ft</div>
-                    </div>
-                    <div style="margin-top: 0.5rem;">
-                        <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.25rem;">Elevation Profile</div>
-                        <div class="elevation-profile">
-                            ${route.profile.map(elevation => `
-                                <div class="elevation-bar ${elevation > state.elevationThreshold ? 'danger' : ''}" 
-                                     style="height: ${(elevation / Math.max(...route.profile)) * 100}%" 
-                                     title="${elevation} ft"></div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `;
+                var profileHTML = '';
+                for (var j = 0; j < route.profile.length; j++) {
+                    var elevation = route.profile[j];
+                    var maxElev = Math.max.apply(Math, route.profile);
+                    var height = (elevation / maxElev) * 100;
+                    var dangerClass = elevation > state.elevationThreshold ? ' danger' : '';
+                    profileHTML += '<div class="elevation-bar' + dangerClass + '" style="height: ' + height + '%" title="' + elevation + ' ft"></div>';
+                }
+                
+                var elevationStyle = route.maxElevation > state.elevationThreshold ? 'color: #dc2626; font-weight: bold;' : '';
+                var recommendedBadge = route.recommended ? '<span class="badge">RECOMMENDED</span>' : '';
+                
+                routeEl.innerHTML = 
+                    '<div class="route-header">' +
+                        '<div>' +
+                            '<h4 style="margin-bottom: 0.25rem;">' + route.name + '</h4>' +
+                            recommendedBadge +
+                        '</div>' +
+                        '<button onclick="startNavigation(' + route.id + ')">Start</button>' +
+                    '</div>' +
+                    '<div class="route-details">' +
+                        '<div>Distance: ' + route.distance + '</div>' +
+                        '<div>Time: ' + route.duration + '</div>' +
+                        '<div style="' + elevationStyle + '">Max: ' + route.maxElevation + ' ft</div>' +
+                        '<div>Gain: ' + route.elevationGain + ' ft</div>' +
+                    '</div>' +
+                    '<div style="margin-top: 0.5rem;">' +
+                        '<div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.25rem;">Elevation Profile</div>' +
+                        '<div class="elevation-profile">' + profileHTML + '</div>' +
+                    '</div>';
                 
                 container.appendChild(routeEl);
-            });
+            }
             
             section.classList.remove('hidden');
         }
 
         function startNavigation(routeId) {
-            const route = state.routes.find(r => r.id === routeId);
+            var route = null;
+            for (var i = 0; i < state.routes.length; i++) {
+                if (state.routes[i].id === routeId) {
+                    route = state.routes[i];
+                    break;
+                }
+            }
+            
+            if (!route) {
+                console.log('Route not found:', routeId);
+                return;
+            }
+            
             console.log('Starting navigation:', route.name);
             
             // Generate step-by-step directions
-            const directions = generateDirections(route, state.destination);
+            var directions = generateDirections(route, state.destination);
             
             // Create the directions page HTML
-            const directionsHTML = createDirectionsPage(route, directions);
+            var directionsHTML = createDirectionsPage(route, directions);
             
             // Open new window/tab with directions
-            const newWindow = window.open('', '_blank');
+            var newWindow = window.open('', '_blank');
             newWindow.document.write(directionsHTML);
             newWindow.document.close();
             
@@ -574,103 +590,38 @@
         }
 
         function generateDirections(route, destination) {
-            // Generate realistic step-by-step directions using OpenStreetMap data format
-            let directions = [];
+            var directions = [];
             
             if (route.name === 'Lowest Elevation Route') {
                 directions = [
-                    { 
-                        step: 1, 
-                        instruction: "Head north on Main St", 
-                        distance: "0.3 mi", 
-                        elevation: 285,
-                        details: "Start from your current location and proceed north",
-                        osm_way: "Main Street (residential)",
-                        turn_type: "start"
-                    },
-                    { 
-                        step: 2, 
-                        instruction: "Turn right onto Valley Rd (US-101)", 
-                        distance: "5.2 mi", 
-                        elevation: 320,
-                        details: "Follow US-101 North - this is a major highway with good visibility",
-                        osm_way: "US Route 101 (highway=primary)",
-                        turn_type: "turn-right"
-                    },
-                    { 
-                        step: 3, 
-                        instruction: "Keep left to stay on Valley Rd", 
-                        distance: "8.1 mi", 
-                        elevation: 450,
-                        details: "Continue on Valley Rd, avoiding the mountain pass exit",
-                        osm_way: "Valley Road (highway=secondary)",
-                        turn_type: "keep-left"
-                    },
-                    { 
-                        step: 4, 
-                        instruction: "Take Exit 23 for Mountain View Blvd", 
-                        distance: "2.4 mi", 
-                        elevation: 680,
-                        details: "Take the right exit and merge onto Mountain View Blvd",
-                        osm_way: "Mountain View Boulevard (highway=tertiary)",
-                        turn_type: "exit-right"
-                    },
-                    { 
-                        step: 5, 
-                        instruction: "Turn left onto Lower Canyon Dr", 
-                        distance: "12.5 mi", 
-                        elevation: 1200,
-                        details: "This scenic route follows the valley floor",
-                        osm_way: "Lower Canyon Drive (highway=secondary)",
-                        turn_type: "turn-left"
-                    },
-                    { 
-                        step: 6, 
-                        instruction: "Continue on Riverside Hwy (CA-92)", 
-                        distance: "18.7 mi", 
-                        elevation: 2100,
-                        details: "Follow CA-92 East - gradual elevation increase",
-                        osm_way: "California State Route 92 (highway=primary)",
-                        turn_type: "continue"
-                    },
-                    { 
-                        step: 7, 
-                        instruction: "Take Exit 45 for Foothill Rd", 
-                        distance: "6.3 mi", 
-                        elevation: 2800,
-                        details: "Exit right and follow signs for Foothill Rd",
-                        osm_way: "Foothill Road (highway=secondary)",
-                        turn_type: "exit-right"
-                    },
-                    { 
-                        step: 8, 
-                        instruction: "Turn right onto " + destination, 
-                        distance: "1.2 mi", 
-                        elevation: 2600,
-                        details: "Final approach to your destination",
-                        osm_way: destination + " (destination)",
-                        turn_type: "turn-right"
-                    }
+                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location and proceed north" },
+                    { step: 2, instruction: "Turn right onto Valley Rd (US-101)", distance: "5.2 mi", elevation: 320, details: "Follow US-101 North - major highway with good visibility" },
+                    { step: 3, instruction: "Keep left to stay on Valley Rd", distance: "8.1 mi", elevation: 450, details: "Continue on Valley Rd, avoiding mountain pass exit" },
+                    { step: 4, instruction: "Take Exit 23 for Mountain View Blvd", distance: "2.4 mi", elevation: 680, details: "Take the right exit and merge onto Mountain View Blvd" },
+                    { step: 5, instruction: "Turn left onto Lower Canyon Dr", distance: "12.5 mi", elevation: 1200, details: "Scenic route follows the valley floor" },
+                    { step: 6, instruction: "Continue on Riverside Hwy (CA-92)", distance: "18.7 mi", elevation: 2100, details: "Follow CA-92 East - gradual elevation increase" },
+                    { step: 7, instruction: "Take Exit 45 for Foothill Rd", distance: "6.3 mi", elevation: 2800, details: "Exit right and follow signs for Foothill Rd" },
+                    { step: 8, instruction: "Turn right onto " + destination, distance: "1.2 mi", elevation: 2600, details: "Final approach to your destination" }
                 ];
             } else if (route.name === 'Fastest Route') {
                 directions = [
-                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location", osm_way: "Main Street", turn_type: "start" },
-                    { step: 2, instruction: "Merge onto I-5 North", distance: "12.4 mi", elevation: 800, details: "Take the I-5 North on-ramp", osm_way: "Interstate 5 (highway=motorway)", turn_type: "merge" },
-                    { step: 3, instruction: "Take Exit 67 for I-405 North", distance: "25.6 mi", elevation: 2100, details: "Continue on I-405 North toward mountain pass", osm_way: "Interstate 405 (highway=motorway)", turn_type: "exit-right" },
-                    { step: 4, instruction: "Continue on Mountain Pass Hwy", distance: "32.1 mi", elevation: 4500, details: "WARNING: High elevation section - monitor breathing", osm_way: "Mountain Pass Highway (highway=primary)", turn_type: "continue" },
-                    { step: 5, instruction: "Take Exit 89 for Summit Rd", distance: "8.2 mi", elevation: 6500, details: "CAUTION: Peak elevation - consider rest stop", osm_way: "Summit Road (highway=secondary)", turn_type: "exit-right" },
-                    { step: 6, instruction: "Turn left onto Highland Ave", distance: "4.7 mi", elevation: 5200, details: "Descending from peak elevation", osm_way: "Highland Avenue (highway=tertiary)", turn_type: "turn-left" },
-                    { step: 7, instruction: "Turn right onto " + destination, distance: "2.1 mi", elevation: 4800, details: "Final approach to destination", osm_way: destination, turn_type: "turn-right" }
+                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location" },
+                    { step: 2, instruction: "Merge onto I-5 North", distance: "12.4 mi", elevation: 800, details: "Take the I-5 North on-ramp" },
+                    { step: 3, instruction: "Take Exit 67 for I-405 North", distance: "25.6 mi", elevation: 2100, details: "Continue on I-405 North toward mountain pass" },
+                    { step: 4, instruction: "Continue on Mountain Pass Hwy", distance: "32.1 mi", elevation: 4500, details: "WARNING: High elevation section - monitor breathing" },
+                    { step: 5, instruction: "Take Exit 89 for Summit Rd", distance: "8.2 mi", elevation: 6500, details: "CAUTION: Peak elevation - consider rest stop" },
+                    { step: 6, instruction: "Turn left onto Highland Ave", distance: "4.7 mi", elevation: 5200, details: "Descending from peak elevation" },
+                    { step: 7, instruction: "Turn right onto " + destination, distance: "2.1 mi", elevation: 4800, details: "Final approach to destination" }
                 ];
             } else {
                 directions = [
-                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location", osm_way: "Main Street", turn_type: "start" },
-                    { step: 2, instruction: "Turn right onto Scenic Route 1", distance: "8.9 mi", elevation: 600, details: "Beautiful coastal views ahead", osm_way: "Scenic Route 1 (highway=secondary)", turn_type: "turn-right" },
-                    { step: 3, instruction: "Continue on Pacific Coast Hwy", distance: "15.2 mi", elevation: 1200, details: "Follow the coastline - scenic but winding", osm_way: "Pacific Coast Highway (highway=primary)", turn_type: "continue" },
-                    { step: 4, instruction: "Turn left onto Canyon View Dr", distance: "12.7 mi", elevation: 2800, details: "Entering canyon area with moderate elevation", osm_way: "Canyon View Drive (highway=secondary)", turn_type: "turn-left" },
-                    { step: 5, instruction: "Take Exit 34 for Vista Point Rd", distance: "9.4 mi", elevation: 4800, details: "Scenic overlook available at Vista Point", osm_way: "Vista Point Road (highway=tertiary)", turn_type: "exit-right" },
-                    { step: 6, instruction: "Continue on Mountain Ridge Rd", distance: "11.8 mi", elevation: 3900, details: "Ridge road with panoramic views", osm_way: "Mountain Ridge Road (highway=secondary)", turn_type: "continue" },
-                    { step: 7, instruction: "Turn right onto " + destination, distance: "3.2 mi", elevation: 2400, details: "Final stretch to your destination", osm_way: destination, turn_type: "turn-right" }
+                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location" },
+                    { step: 2, instruction: "Turn right onto Scenic Route 1", distance: "8.9 mi", elevation: 600, details: "Beautiful coastal views ahead" },
+                    { step: 3, instruction: "Continue on Pacific Coast Hwy", distance: "15.2 mi", elevation: 1200, details: "Follow the coastline - scenic but winding" },
+                    { step: 4, instruction: "Turn left onto Canyon View Dr", distance: "12.7 mi", elevation: 2800, details: "Entering canyon area with moderate elevation" },
+                    { step: 5, instruction: "Take Exit 34 for Vista Point Rd", distance: "9.4 mi", elevation: 4800, details: "Scenic overlook available at Vista Point" },
+                    { step: 6, instruction: "Continue on Mountain Ridge Rd", distance: "11.8 mi", elevation: 3900, details: "Ridge road with panoramic views" },
+                    { step: 7, instruction: "Turn right onto " + destination, distance: "3.2 mi", elevation: 2400, details: "Final stretch to your destination" }
                 ];
             }
             
@@ -678,254 +629,63 @@
         }
 
         function createDirectionsPage(route, directions) {
-            const totalDistance = directions.reduce((sum, dir) => {
-                return sum + parseFloat(dir.distance.replace(' mi', ''));
-            }, 0);
-            
-            const maxElevation = Math.max(...directions.map(d => d.elevation));
-            const minElevation = Math.min(...directions.map(d => d.elevation));
-            
-            // Generate turn icons based on OpenStreetMap turn types
-            function getTurnIcon(turnType) {
-                const icons = {
-                    'start': '🚩',
-                    'turn-left': '↰',
-                    'turn-right': '↱', 
-                    'keep-left': '↖',
-                    'keep-right': '↗',
-                    'continue': '↑',
-                    'merge': '🔀',
-                    'exit-left': '↙',
-                    'exit-right': '↘'
-                };
-                return icons[turnType] || '→';
+            var totalDistance = 0;
+            for (var i = 0; i < directions.length; i++) {
+                totalDistance += parseFloat(directions[i].distance.replace(' mi', ''));
             }
             
-            return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Directions: ${route.name}</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background: #f8f9fa;
-            margin: 0;
-            padding: 1rem;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        .header {
-            background: #2563eb;
-            color: white;
-            padding: 1.5rem;
-            text-align: center;
-        }
-        .osm-attribution {
-            background: #e0f2fe;
-            border: 1px solid #0284c7;
-            margin: 1rem;
-            padding: 0.75rem;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            text-align: center;
-        }
-        .route-summary {
-            background: #f0fdf4;
-            border: 2px solid #16a34a;
-            margin: 1rem;
-            padding: 1rem;
-            border-radius: 8px;
-        }
-        .elevation-warning {
-            background: #fef2f2;
-            border: 2px solid #dc2626;
-            color: #dc2626;
-            margin: 1rem;
-            padding: 1rem;
-            border-radius: 8px;
-            font-weight: bold;
-        }
-        .step {
-            display: flex;
-            padding: 1rem;
-            border-bottom: 1px solid #e5e7eb;
-            align-items: flex-start;
-            gap: 1rem;
-        }
-        .step:hover {
-            background: #f9fafb;
-        }
-        .step-icon {
-            background: #2563eb;
-            color: white;
-            width: 2.5rem;
-            height: 2.5rem;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-            flex-shrink: 0;
-        }
-        .step-content {
-            flex: 1;
-        }
-        .step-instruction {
-            font-weight: bold;
-            font-size: 1.1rem;
-            margin-bottom: 0.25rem;
-        }
-        .step-details {
-            color: #6b7280;
-            font-size: 0.9rem;
-            margin-bottom: 0.5rem;
-        }
-        .osm-way {
-            color: #059669;
-            font-size: 0.8rem;
-            font-style: italic;
-            margin-bottom: 0.5rem;
-        }
-        .step-info {
-            display: flex;
-            gap: 1rem;
-            font-size: 0.9rem;
-        }
-        .distance {
-            color: #2563eb;
-            font-weight: 500;
-        }
-        .elevation {
-            color: #059669;
-            font-weight: 500;
-        }
-        .elevation-high {
-            color: #dc2626;
-            font-weight: bold;
-        }
-        .footer {
-            background: #f9fafb;
-            padding: 1rem;
-            text-align: center;
-            color: #6b7280;
-            font-size: 0.9rem;
-        }
-        .close-btn {
-            background: #6b7280;
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-top: 1rem;
-        }
-        .close-btn:hover {
-            background: #4b5563;
-        }
-        .osm-link {
-            color: #2563eb;
-            text-decoration: none;
-        }
-        .osm-link:hover {
-            text-decoration: underline;
-        }
-        @media print {
-            .close-btn { display: none; }
-            .osm-attribution { display: none; }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>${route.name}</h1>
-            <p>Turn-by-turn directions to ${state.destination}</p>
-        </div>
-        
-        <div class="osm-attribution">
-            📍 Route data powered by <a href="https://www.openstreetmap.org/" target="_blank" class="osm-link">OpenStreetMap</a> 
-            - Free, open-source mapping data contributed by millions of users worldwide
-        </div>
-        
-        <div class="route-summary">
-            <h3>Route Summary</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
-                <div><strong>Total Distance:</strong> ${totalDistance.toFixed(1)} miles</div>
-                <div><strong>Estimated Time:</strong> ${route.duration}</div>
-                <div><strong>Max Elevation:</strong> ${maxElevation} ft</div>
-                <div><strong>Elevation Gain:</strong> ${route.elevationGain} ft</div>
-            </div>
-        </div>
-        
-        ${maxElevation > state.elevationThreshold ? `
-        <div class="elevation-warning">
-            ⚠️ WARNING: This route reaches ${maxElevation} ft elevation, which exceeds your safe limit of ${state.elevationThreshold} ft. 
-            Consider taking breaks or choosing the "Lowest Elevation Route" instead.
-        </div>
-        ` : ''}
-        
-        <div>
-            ${directions.map(direction => `
-                <div class="step">
-                    <div class="step-icon">${getTurnIcon(direction.turn_type)}</div>
-                    <div class="step-content">
-                        <div class="step-instruction">${direction.instruction}</div>
-                        <div class="osm-way">OpenStreetMap: ${direction.osm_way}</div>
-                        <div class="step-details">${direction.details}</div>
-                        <div class="step-info">
-                            <span class="distance">Distance: ${direction.distance}</span>
-                            <span class="elevation ${direction.elevation > state.elevationThreshold ? 'elevation-high' : ''}">
-                                Elevation: ${direction.elevation} ft
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-        
-        <div class="footer">
-            <p><strong>Important:</strong> Monitor your breathing and take breaks as needed. If you experience any difficulty breathing, stop and seek lower elevation immediately.</p>
-            <p>Route data from <a href="https://www.openstreetmap.org/" target="_blank" class="osm-link">OpenStreetMap</a> contributors. 
-            Keep this window open for reference during your trip.</p>
-            <button class="close-btn" onclick="window.close()">Close Directions</button>
-            <button class="close-btn" onclick="window.print()" style="background: #2563eb; margin-left: 0.5rem;">Print Directions</button>
-        </div>
-    </div>
-    
-    <script>
-        // Add functionality to open current step in OpenStreetMap
-        function openInOSM(lat, lng) {
-            window.open('https://www.openstreetmap.org/#map=16/' + lat + '/' + lng, '_blank');
-        }
-        
-        // Add click handlers to steps for OSM integration
-        document.querySelectorAll('.step').forEach((step, index) => {
-            step.style.cursor = 'pointer';
-            step.title = 'Click to view this location on OpenStreetMap';
-            step.addEventListener('click', () => {
-                // Calculate approximate coordinates based on current location and step
-                const baseLat = ${state.currentLocation.lat};
-                const baseLng = ${state.currentLocation.lng};
-                const stepLat = baseLat + (index * 0.01); // Approximate step location
-                const stepLng = baseLng + (index * 0.01);
-                openInOSM(stepLat, stepLng);
-            });
-        });
-    </script>
-</body>
-</html>
-            `;
+            var maxElevation = 0;
+            for (var i = 0; i < directions.length; i++) {
+                if (directions[i].elevation > maxElevation) {
+                    maxElevation = directions[i].elevation;
+                }
+            }
+            
+            var warningHTML = '';
+            if (maxElevation > state.elevationThreshold) {
+                warningHTML = '<div style="background: #fef2f2; border: 2px solid #dc2626; color: #dc2626; margin: 1rem; padding: 1rem; border-radius: 8px; font-weight: bold;">' +
+                    'WARNING: This route reaches ' + maxElevation + ' ft elevation, which exceeds your safe limit of ' + state.elevationThreshold + ' ft. Consider taking breaks or choosing the "Lowest Elevation Route" instead.' +
+                    '</div>';
+            }
+            
+            var stepsHTML = '';
+            for (var i = 0; i < directions.length; i++) {
+                var direction = directions[i];
+                var elevationClass = direction.elevation > state.elevationThreshold ? 'color: #dc2626; font-weight: bold;' : 'color: #059669; font-weight: 500;';
+                stepsHTML += 
+                    '<div style="display: flex; padding: 1rem; border-bottom: 1px solid #e5e7eb; align-items: flex-start; gap: 1rem;">' +
+                        '<div style="background: #2563eb; color: white; width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">' + direction.step + '</div>' +
+                        '<div style="flex: 1;">' +
+                            '<div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 0.25rem;">' + direction.instruction + '</div>' +
+                            '<div style="color: #6b7280; font-size: 0.9rem; margin-bottom: 0.5rem;">' + direction.details + '</div>' +
+                            '<div style="display: flex; gap: 1rem; font-size: 0.9rem;">' +
+                                '<span style="color: #2563eb; font-weight: 500;">Distance: ' + direction.distance + '</span>' +
+                                '<span style="' + elevationClass + '">Elevation: ' + direction.elevation + ' ft</span>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>';
+            }
+            
+            return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Directions: ' + route.name + '</title>' +
+                '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.6;color:#333;background:#f8f9fa;margin:0;padding:1rem}.container{max-width:600px;margin:0 auto;background:white;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);overflow:hidden}.header{background:#2563eb;color:white;padding:1.5rem;text-align:center}.close-btn{background:#6b7280;color:white;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;margin-top:1rem}.close-btn:hover{background:#4b5563}</style></head><body>' +
+                '<div class="container">' +
+                    '<div class="header"><h1>' + route.name + '</h1><p>Turn-by-turn directions to ' + state.destination + '</p></div>' +
+                    '<div style="background: #f0fdf4; border: 2px solid #16a34a; margin: 1rem; padding: 1rem; border-radius: 8px;"><h3>Route Summary</h3>' +
+                        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">' +
+                            '<div><strong>Total Distance:</strong> ' + totalDistance.toFixed(1) + ' miles</div>' +
+                            '<div><strong>Estimated Time:</strong> ' + route.duration + '</div>' +
+                            '<div><strong>Max Elevation:</strong> ' + maxElevation + ' ft</div>' +
+                            '<div><strong>Elevation Gain:</strong> ' + route.elevationGain + ' ft</div>' +
+                        '</div></div>' +
+                    warningHTML +
+                    '<div>' + stepsHTML + '</div>' +
+                    '<div style="background: #f9fafb; padding: 1rem; text-align: center; color: #6b7280; font-size: 0.9rem;">' +
+                        '<p><strong>Important:</strong> Monitor your breathing and take breaks as needed. If you experience any difficulty breathing, stop and seek lower elevation immediately.</p>' +
+                        '<p>Powered by OpenStreetMap. Keep this window open for reference during your trip.</p>' +
+                        '<button class="close-btn" onclick="window.close()">Close Directions</button>' +
+                        '<button class="close-btn" onclick="window.print()" style="background: #2563eb; margin-left: 0.5rem;">Print Directions</button>' +
+                    '</div>' +
+                '</div></body></html>';
         }
 
         function stopNavigation() {
@@ -940,12 +700,12 @@
             console.log('Downloading offline data...');
             
             // Simulate download
-            let progress = 0;
-            const btn = document.getElementById('offline-btn');
+            var progress = 0;
+            var btn = document.getElementById('offline-btn');
             
-            const interval = setInterval(() => {
+            var interval = setInterval(function() {
                 progress += 25;
-                btn.textContent = `Downloading... ${progress}%`;
+                btn.textContent = 'Downloading... ' + progress + '%';
                 
                 if (progress >= 100) {
                     clearInterval(interval);

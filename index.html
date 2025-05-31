@@ -1,4 +1,13 @@
-<!DOCTYPE html>
+        <!-- Quick Actions -->
+        <div class="section">
+            <h3 style="margin-bottom: 0.5rem;">Quick Actions</h3>
+            <button onclick="getCurrentLocation()" style="width: 100%; margin-bottom: 0.5rem;">
+                Update Current Location
+            </button>
+            <button onclick="toggleOfflineData()" id="offline-btn" style="width: 100%;">
+                Download Offline Maps
+            </button>
+        </div><!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -12,6 +21,9 @@
     <meta name="apple-mobile-web-app-title" content="Elevation Navigation" />
     
     <title>Elevation Navigation</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
         * {
@@ -210,7 +222,46 @@
         .status-connected { background: #16a34a; }
         .status-connecting { background: #f59e0b; }
         .status-error { background: #dc2626; }
+        
+        /* Map Styles */
+        .map-container {
+            height: 300px;
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #e5e7eb;
+        }
+        
+        .map-toggle-btn {
+            width: 100%;
+            padding: 0.75rem;
+            background: #f3f4f6;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        
+        .map-toggle-btn:hover {
+            background: #e5e7eb;
+        }
+        
+        .route-on-map {
+            stroke: #dc2626;
+            stroke-width: 4;
+            stroke-opacity: 0.8;
+        }
+        
+        .route-low-elevation {
+            stroke: #16a34a;
+            stroke-width: 4;
+            stroke-opacity: 0.8;
+        }
     </style>
+    
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
     <div class="container">
@@ -234,8 +285,9 @@
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                        <strong>Current Elevation</strong>
+                        <strong>Current Location</strong>
                     </div>
+                    <div id="current-city" style="font-size: 1rem; color: #4b5563; margin-bottom: 0.5rem;">Los Angeles, CA</div>
                     <div id="elevation-value" class="elevation-value">285 ft</div>
                     <div style="font-size: 0.9rem; opacity: 0.8;">
                         Max safe: <span id="threshold-value">8000</span> ft
@@ -245,15 +297,20 @@
             </div>
         </div>
 
-        <!-- Quick Actions -->
+        <!-- Interactive Map Section -->
         <div class="section">
-            <h3 style="margin-bottom: 0.5rem;">Quick Actions</h3>
-            <button onclick="getCurrentLocation()" style="width: 100%; margin-bottom: 0.5rem;">
-                Update Current Location
-            </button>
-            <button onclick="toggleOfflineData()" id="offline-btn" style="width: 100%;">
-                Download Offline Maps
-            </button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3>Navigation Map</h3>
+                <button onclick="toggleMap()" id="map-toggle-btn" class="map-toggle-btn" style="width: auto; margin: 0; padding: 0.5rem 1rem;">
+                    Show Map
+                </button>
+            </div>
+            <div id="map-section" class="hidden">
+                <div id="map" class="map-container"></div>
+                <div style="font-size: 0.8rem; color: #6b7280; margin-top: 0.5rem; text-align: center;">
+                    Interactive map powered by OpenStreetMap
+                </div>
+            </div>
         </div>
 
         <!-- Destination Input -->
@@ -290,13 +347,17 @@
         // App State
         var state = {
             currentLocation: { lat: 34.0522, lng: -118.2437, elevation: 285 },
+            currentCity: 'Los Angeles, CA',
             elevationThreshold: 8000,
             destination: '',
             routes: [],
             isNavigating: false,
             offlineDataDownloaded: false,
             gpsStatus: 'connecting',
-            isPWA: false
+            isPWA: false,
+            map: null,
+            mapVisible: false,
+            routeLayers: []
         };
 
         // Initialize app
@@ -365,6 +426,13 @@
                             elevation: position.coords.altitude ? position.coords.altitude * 3.28084 : 285
                         };
                         state.gpsStatus = 'connected';
+                        
+                        // Get city name from coordinates
+                        getCityFromCoordinates(state.currentLocation.lat, state.currentLocation.lng);
+                        
+                        // Update map if visible
+                        updateMapLocation();
+                        
                         updateDisplay();
                         console.log('GPS connected:', state.currentLocation);
                     },
@@ -387,6 +455,247 @@
                 state.gpsStatus = 'error';
                 updateDisplay();
                 alert('GPS not available on this device');
+            }
+        }
+
+        function getCityFromCoordinates(lat, lng) {
+            // Simulate reverse geocoding to get city name from coordinates
+            // In a real app, you could use a free service like OpenStreetMap Nominatim
+            
+            console.log('Getting city name for coordinates:', lat, lng);
+            
+            // Mock city data based on approximate coordinates
+            var cityData = getCityFromCoords(lat, lng);
+            
+            if (cityData) {
+                state.currentCity = cityData;
+                document.getElementById('current-city').textContent = cityData;
+                console.log('City updated to:', cityData);
+            }
+        }
+
+        function getCityFromCoords(lat, lng) {
+            // Approximate city lookup based on coordinates
+            var cities = [
+                { name: 'Los Angeles, CA', lat: 34.0522, lng: -118.2437, range: 0.5 },
+                { name: 'San Francisco, CA', lat: 37.7749, lng: -122.4194, range: 0.3 },
+                { name: 'Denver, CO', lat: 39.7392, lng: -104.9903, range: 0.4 },
+                { name: 'Seattle, WA', lat: 47.6062, lng: -122.3321, range: 0.3 },
+                { name: 'Phoenix, AZ', lat: 33.4484, lng: -112.0740, range: 0.4 },
+                { name: 'Chicago, IL', lat: 41.8781, lng: -87.6298, range: 0.4 },
+                { name: 'New York, NY', lat: 40.7128, lng: -74.0060, range: 0.3 },
+                { name: 'Miami, FL', lat: 25.7617, lng: -80.1918, range: 0.3 },
+                { name: 'Las Vegas, NV', lat: 36.1699, lng: -115.1398, range: 0.3 },
+                { name: 'Salt Lake City, UT', lat: 40.7608, lng: -111.8910, range: 0.3 },
+                { name: 'Portland, OR', lat: 45.5152, lng: -122.6784, range: 0.3 },
+                { name: 'Atlanta, GA', lat: 33.7490, lng: -84.3880, range: 0.4 },
+                { name: 'Dallas, TX', lat: 32.7767, lng: -96.7970, range: 0.4 },
+                { name: 'Sacramento, CA', lat: 38.5816, lng: -121.4944, range: 0.3 },
+                { name: 'Flagstaff, AZ', lat: 35.1983, lng: -111.6513, range: 0.2 }
+            ];
+            
+            // Find closest city
+            for (var i = 0; i < cities.length; i++) {
+                var city = cities[i];
+                var latDiff = Math.abs(lat - city.lat);
+                var lngDiff = Math.abs(lng - city.lng);
+                
+                if (latDiff <= city.range && lngDiff <= city.range) {
+                    return city.name;
+                }
+            }
+            
+            // If no exact match, create approximate location
+            var state = '';
+            if (lng < -120) state = 'CA';
+            else if (lng < -110) state = 'NV/UT/AZ';
+            else if (lng < -100) state = 'CO/NM';
+            else if (lng < -90) state = 'TX/OK';
+            else if (lng < -80) state = 'FL/GA';
+            else state = 'East Coast';
+            
+            return 'Current Location, ' + state;
+        }
+
+        function toggleMap() {
+            var mapSection = document.getElementById('map-section');
+            var toggleBtn = document.getElementById('map-toggle-btn');
+            
+            if (state.mapVisible) {
+                // Hide map
+                mapSection.classList.add('hidden');
+                toggleBtn.textContent = 'Show Map';
+                state.mapVisible = false;
+            } else {
+                // Show map
+                mapSection.classList.remove('hidden');
+                toggleBtn.textContent = 'Hide Map';
+                state.mapVisible = true;
+                
+                // Initialize map if not already done
+                if (!state.map) {
+                    initializeMap();
+                } else {
+                    // Resize map in case container changed
+                    setTimeout(function() {
+                        state.map.invalidateSize();
+                    }, 100);
+                }
+            }
+        }
+
+        function initializeMap() {
+            console.log('Initializing OpenStreetMap...');
+            
+            // Create map centered on current location
+            state.map = L.map('map').setView([state.currentLocation.lat, state.currentLocation.lng], 10);
+            
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(state.map);
+            
+            // Add current location marker
+            var currentLocationIcon = L.divIcon({
+                className: 'current-location-marker',
+                html: '<div style="background: #2563eb; width: 12px; height: 12px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            });
+            
+            state.currentLocationMarker = L.marker([state.currentLocation.lat, state.currentLocation.lng], {
+                icon: currentLocationIcon
+            }).addTo(state.map);
+            
+            state.currentLocationMarker.bindPopup('Current Location<br>' + state.currentCity + '<br>Elevation: ' + Math.round(state.currentLocation.elevation) + ' ft');
+            
+            console.log('Map initialized successfully');
+        }
+
+        function updateMapLocation() {
+            if (state.map && state.currentLocationMarker) {
+                var lat = state.currentLocation.lat;
+                var lng = state.currentLocation.lng;
+                
+                // Update marker position
+                state.currentLocationMarker.setLatLng([lat, lng]);
+                
+                // Update popup content
+                state.currentLocationMarker.bindPopup('Current Location<br>' + state.currentCity + '<br>Elevation: ' + Math.round(state.currentLocation.elevation) + ' ft');
+                
+                // Center map on new location
+                state.map.setView([lat, lng], state.map.getZoom());
+            }
+        }
+
+        function addRouteToMap(route) {
+            if (!state.map) return;
+            
+            console.log('Adding route to map:', route.name);
+            
+            // Clear existing route layers
+            clearRoutesFromMap();
+            
+            // Generate route coordinates based on route type
+            var routeCoords = generateRouteCoordinates(route);
+            
+            // Choose color based on elevation safety
+            var routeColor = route.maxElevation > state.elevationThreshold ? '#dc2626' : '#16a34a';
+            var routeClass = route.maxElevation > state.elevationThreshold ? 'route-on-map' : 'route-low-elevation';
+            
+            // Create polyline for the route
+            var routeLine = L.polyline(routeCoords, {
+                color: routeColor,
+                weight: 4,
+                opacity: 0.8
+            }).addTo(state.map);
+            
+            // Add markers for start and end
+            var startIcon = L.divIcon({
+                className: 'start-marker',
+                html: '<div style="background: #16a34a; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">START</div>',
+                iconSize: [50, 24],
+                iconAnchor: [25, 12]
+            });
+            
+            var endIcon = L.divIcon({
+                className: 'end-marker',
+                html: '<div style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">END</div>',
+                iconSize: [40, 24],
+                iconAnchor: [20, 12]
+            });
+            
+            var startMarker = L.marker(routeCoords[0], { icon: startIcon }).addTo(state.map);
+            var endMarker = L.marker(routeCoords[routeCoords.length - 1], { icon: endIcon }).addTo(state.map);
+            
+            startMarker.bindPopup('Start: ' + state.currentCity + '<br>Elevation: ' + Math.round(state.currentLocation.elevation) + ' ft');
+            endMarker.bindPopup('Destination: ' + state.destination + '<br>Route: ' + route.name);
+            
+            // Add elevation markers along the route
+            for (var i = 0; i < route.profile.length; i++) {
+                var coordIndex = Math.floor((i / (route.profile.length - 1)) * (routeCoords.length - 1));
+                var elevation = route.profile[i];
+                var isHighElevation = elevation > state.elevationThreshold;
+                
+                if (i % 2 === 0) { // Show every other elevation point to avoid clutter
+                    var elevationIcon = L.divIcon({
+                        className: 'elevation-marker',
+                        html: '<div style="background: ' + (isHighElevation ? '#dc2626' : '#059669') + '; color: white; padding: 2px 6px; border-radius: 8px; font-size: 10px; font-weight: bold;">' + elevation + 'ft</div>',
+                        iconSize: [40, 16],
+                        iconAnchor: [20, 8]
+                    });
+                    
+                    var elevationMarker = L.marker(routeCoords[coordIndex], { icon: elevationIcon }).addTo(state.map);
+                    elevationMarker.bindPopup('Elevation: ' + elevation + ' ft' + (isHighElevation ? '<br><strong>WARNING: High elevation!</strong>' : ''));
+                }
+            }
+            
+            // Store layers for cleanup
+            state.routeLayers = [routeLine, startMarker, endMarker];
+            
+            // Fit map to show entire route
+            state.map.fitBounds(routeLine.getBounds(), { padding: [20, 20] });
+        }
+
+        function generateRouteCoordinates(route) {
+            // Generate realistic route coordinates based on start location and route type
+            var coords = [];
+            var startLat = state.currentLocation.lat;
+            var startLng = state.currentLocation.lng;
+            
+            // Create a route path based on route characteristics
+            var steps = 20; // Number of coordinate points along route
+            
+            for (var i = 0; i <= steps; i++) {
+                var progress = i / steps;
+                
+                if (route.name === 'Lowest Elevation Route') {
+                    // Valley route - follows lower terrain
+                    var lat = startLat + (progress * 0.5) - (Math.sin(progress * Math.PI) * 0.1);
+                    var lng = startLng + (progress * 0.8) + (Math.cos(progress * Math.PI * 2) * 0.05);
+                } else if (route.name === 'Fastest Route') {
+                    // Highway route - more direct but through mountains
+                    var lat = startLat + (progress * 0.6);
+                    var lng = startLng + (progress * 0.7);
+                } else {
+                    // Scenic route - winding path
+                    var lat = startLat + (progress * 0.4) + (Math.sin(progress * Math.PI * 3) * 0.1);
+                    var lng = startLng + (progress * 0.9) + (Math.cos(progress * Math.PI * 2) * 0.08);
+                }
+                
+                coords.push([lat, lng]);
+            }
+            
+            return coords;
+        }
+
+        function clearRoutesFromMap() {
+            if (state.routeLayers) {
+                for (var i = 0; i < state.routeLayers.length; i++) {
+                    state.map.removeLayer(state.routeLayers[i]);
+                }
+                state.routeLayers = [];
             }
         }
 
@@ -433,9 +742,11 @@
             var elevationValue = document.getElementById('elevation-value');
             var thresholdValue = document.getElementById('threshold-value');
             var warningIcon = document.getElementById('warning-icon');
+            var currentCity = document.getElementById('current-city');
             
             elevationValue.textContent = Math.round(elevation) + ' ft';
             thresholdValue.textContent = threshold;
+            currentCity.textContent = state.currentCity;
             
             // Remove all elevation classes
             statusCard.className = 'status-card';
@@ -506,6 +817,12 @@
                 
                 displayRoutes();
                 console.log('Routes calculated');
+                
+                // If map is visible and routes are available, show first route on map
+                if (state.mapVisible && state.routes.length > 0) {
+                    var recommendedRoute = state.routes.find(function(r) { return r.recommended; }) || state.routes[0];
+                    addRouteToMap(recommendedRoute);
+                }
             }, 1500);
         }
 
@@ -519,6 +836,14 @@
                 var route = state.routes[i];
                 var routeEl = document.createElement('div');
                 routeEl.className = 'route-card' + (route.recommended ? ' route-recommended' : '');
+                
+                // Add click handler to show route on map
+                routeEl.style.cursor = 'pointer';
+                routeEl.onclick = function() {
+                    if (state.mapVisible) {
+                        addRouteToMap(route);
+                    }
+                };
                 
                 var profileHTML = '';
                 for (var j = 0; j < route.profile.length; j++) {
@@ -538,7 +863,10 @@
                             '<h4 style="margin-bottom: 0.25rem;">' + route.name + '</h4>' +
                             recommendedBadge +
                         '</div>' +
-                        '<button onclick="startNavigation(' + route.id + ')">Start</button>' +
+                        '<div style="display: flex; gap: 0.5rem;">' +
+                            (state.mapVisible ? '<button onclick="event.stopPropagation(); addRouteToMap(' + JSON.stringify(route).replace(/"/g, '&quot;') + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; background: #059669;">Map</button>' : '') +
+                            '<button onclick="startNavigation(' + route.id + ')">Start</button>' +
+                        '</div>' +
                     '</div>' +
                     '<div class="route-details">' +
                         '<div>Distance: ' + route.distance + '</div>' +

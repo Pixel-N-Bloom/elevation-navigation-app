@@ -15,8 +15,8 @@
 <body>
 
 <div id="controls">
-  <input type="text" id="start" placeholder="Start (lat,lng)" value="34.0522,-118.2437" />
-  <input type="text" id="end" placeholder="End (lat,lng)" value="36.1699,-115.1398" />
+  <input type="text" id="startPlace" placeholder="Start (e.g. Los Angeles, CA)" />
+  <input type="text" id="endPlace" placeholder="End (e.g. Las Vegas, NV)" />
   <button onclick="plotRoute()">Get Route</button>
 </div>
 
@@ -32,39 +32,54 @@
 
   let routeLayer;
 
+  async function geocode(place) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
+    const response = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+    const data = await response.json();
+    if (!data || data.length === 0) throw new Error(`Location not found: ${place}`);
+    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  }
+
   async function plotRoute() {
-    const start = document.getElementById("start").value.split(',').map(Number);
-    const end = document.getElementById("end").value.split(',').map(Number);
+    try {
+      const startPlace = document.getElementById("startPlace").value;
+      const endPlace = document.getElementById("endPlace").value;
 
-    const routeUrl = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+      const start = await geocode(startPlace);
+      const end = await geocode(endPlace);
 
-    const routeRes = await fetch(routeUrl);
-    const routeData = await routeRes.json();
+      const routeUrl = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
 
-    const coords = routeData.routes[0].geometry.coordinates.map(c => [c[1], c[0]]); // [lat, lng]
+      const routeRes = await fetch(routeUrl);
+      const routeData = await routeRes.json();
 
-    if (routeLayer) map.removeLayer(routeLayer);
-    routeLayer = L.polyline(coords, { color: 'blue' }).addTo(map);
-    map.fitBounds(routeLayer.getBounds());
+      const coords = routeData.routes[0].geometry.coordinates.map(c => [c[1], c[0]]); // [lat, lng]
 
-    // Sample elevation from every ~30th point
-    const sampleStep = Math.ceil(coords.length / 30);
-    const samplePoints = coords.filter((_, i) => i % sampleStep === 0);
-    const locations = samplePoints.map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
+      if (routeLayer) map.removeLayer(routeLayer);
+      routeLayer = L.polyline(coords, { color: 'blue' }).addTo(map);
+      map.fitBounds(routeLayer.getBounds());
 
-    const elevationRes = await fetch("https://api.open-elevation.com/api/v1/lookup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locations })
-    });
+      // Sample elevation
+      const sampleStep = Math.ceil(coords.length / 30);
+      const samplePoints = coords.filter((_, i) => i % sampleStep === 0);
+      const locations = samplePoints.map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
 
-    const elevationData = await elevationRes.json();
-    const elevations = elevationData.results.map(r => r.elevation);
-    const min = Math.min(...elevations);
-    const max = Math.max(...elevations);
+      const elevationRes = await fetch("https://api.open-elevation.com/api/v1/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locations })
+      });
 
-    document.getElementById("elevation-info").innerText =
-      `Elevation Range: ${min.toFixed(1)}m – ${max.toFixed(1)}m across ${elevations.length} points`;
+      const elevationData = await elevationRes.json();
+      const elevations = elevationData.results.map(r => r.elevation);
+      const min = Math.min(...elevations);
+      const max = Math.max(...elevations);
+
+      document.getElementById("elevation-info").innerText =
+        `Elevation Range: ${min.toFixed(1)}m – ${max.toFixed(1)}m across ${elevations.length} points`;
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
   }
 </script>
 

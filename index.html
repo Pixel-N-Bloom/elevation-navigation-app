@@ -786,12 +786,14 @@
                     {
                         id: 1,
                         name: 'Lowest Elevation Route',
-                        distance: '145 miles',
-                        duration: '2h 45m',
+                        distance: '186 miles',
+                        duration: '19h 25m',
                         maxElevation: 3200,
                         elevationGain: 1800,
                         recommended: true,
-                        profile: [285, 450, 680, 1200, 2100, 3200, 2800, 1900, 1200, 800, 450]
+                        profile: [285, 450, 680, 1200, 2100, 3200, 2800, 1900, 1200, 800, 450],
+                        avgSpeed: 9.6,
+                        description: 'Avoids highways, follows valley roads and back roads to minimize elevation gain'
                     },
                     {
                         id: 2,
@@ -801,17 +803,21 @@
                         maxElevation: 6500,
                         elevationGain: 4200,
                         recommended: false,
-                        profile: [285, 800, 2100, 4500, 6500, 5200, 3800, 2100, 900, 450]
+                        profile: [285, 800, 2100, 4500, 6500, 5200, 3800, 2100, 900, 450],
+                        avgSpeed: 56.9,
+                        description: 'Direct highway route through mountain passes - fastest but highest elevation'
                     },
                     {
                         id: 3,
-                        name: 'Scenic Route',
-                        distance: '138 miles',
-                        duration: '2h 32m',
+                        name: 'Balanced Route',
+                        distance: '152 miles',
+                        duration: '4h 35m',
                         maxElevation: 4800,
                         elevationGain: 2900,
                         recommended: false,
-                        profile: [285, 600, 1200, 2800, 4800, 3900, 2400, 1500, 800, 400]
+                        profile: [285, 600, 1200, 2800, 4800, 3900, 2400, 1500, 800, 400],
+                        avgSpeed: 33.1,
+                        description: 'Moderate elevation gain with reasonable travel time'
                     }
                 ];
                 
@@ -873,6 +879,7 @@
                         '<div>Time: ' + route.duration + '</div>' +
                         '<div style="' + elevationStyle + '">Max: ' + route.maxElevation + ' ft</div>' +
                         '<div>Gain: ' + route.elevationGain + ' ft</div>' +
+                        '<div style="grid-column: 1 / -1; font-size: 0.8rem; color: #6b7280; margin-top: 0.5rem;">' + route.description + '</div>' +
                     '</div>' +
                     '<div style="margin-top: 0.5rem;">' +
                         '<div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.25rem;">Elevation Profile</div>' +
@@ -901,6 +908,16 @@
             
             console.log('Starting navigation:', route.name);
             
+            // Show map if not already visible
+            if (!state.mapVisible) {
+                toggleMap();
+            }
+            
+            // Add the selected route to map
+            setTimeout(function() {
+                addRouteToMap(route);
+            }, 100);
+            
             // Generate step-by-step directions
             var directions = generateDirections(route, state.destination);
             
@@ -915,6 +932,15 @@
             // Update current app state
             state.isNavigating = true;
             document.getElementById('nav-status').classList.remove('hidden');
+            
+            // Update navigation status with route info
+            var navStatus = document.getElementById('nav-status');
+            navStatus.innerHTML = 
+                '<div>' +
+                    '<div style="font-weight: bold;">Navigating: ' + route.name + '</div>' +
+                    '<div style="font-size: 0.9rem;">' + route.distance + ' • ' + route.duration + ' • Max: ' + route.maxElevation + ' ft</div>' +
+                '</div>' +
+                '<button onclick="stopNavigation()" style="background: #dc2626;">Stop</button>';
         }
 
         function generateDirections(route, destination) {
@@ -922,34 +948,34 @@
             
             if (route.name === 'Lowest Elevation Route') {
                 directions = [
-                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location and proceed north" },
-                    { step: 2, instruction: "Turn right onto Valley Rd (US-101)", distance: "5.2 mi", elevation: 320, details: "Follow US-101 North - major highway with good visibility" },
-                    { step: 3, instruction: "Keep left to stay on Valley Rd", distance: "8.1 mi", elevation: 450, details: "Continue on Valley Rd, avoiding mountain pass exit" },
-                    { step: 4, instruction: "Take Exit 23 for Mountain View Blvd", distance: "2.4 mi", elevation: 680, details: "Take the right exit and merge onto Mountain View Blvd" },
-                    { step: 5, instruction: "Turn left onto Lower Canyon Dr", distance: "12.5 mi", elevation: 1200, details: "Scenic route follows the valley floor" },
-                    { step: 6, instruction: "Continue on Riverside Hwy (CA-92)", distance: "18.7 mi", elevation: 2100, details: "Follow CA-92 East - gradual elevation increase" },
-                    { step: 7, instruction: "Take Exit 45 for Foothill Rd", distance: "6.3 mi", elevation: 2800, details: "Exit right and follow signs for Foothill Rd" },
-                    { step: 8, instruction: "Turn right onto " + destination, distance: "1.2 mi", elevation: 2600, details: "Final approach to your destination" }
+                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location and proceed north on local roads", estimatedTime: "2 min" },
+                    { step: 2, instruction: "Turn right onto Valley Rd avoiding highways", distance: "15.2 mi", elevation: 320, details: "Follow Valley Rd through residential areas - avoid US-101 to maintain low elevation", estimatedTime: "45 min" },
+                    { step: 3, instruction: "Continue on Old Country Rd", distance: "23.1 mi", elevation: 450, details: "Scenic back road through farmland and valley floor", estimatedTime: "1h 15m" },
+                    { step: 4, instruction: "Turn left onto Lower Canyon Dr", distance: "28.4 mi", elevation: 680, details: "Winding canyon road with gradual elevation increase", estimatedTime: "2h 30m" },
+                    { step: 5, instruction: "Follow Riverside Rd (avoiding mountain passes)", distance: "45.5 mi", elevation: 1200, details: "River valley route with minimal elevation gain", estimatedTime: "4h 45m" },
+                    { step: 6, instruction: "Continue on Foothill Rd", distance: "35.7 mi", elevation: 2100, details: "Foothills route staying below major mountain elevations", estimatedTime: "3h 20m" },
+                    { step: 7, instruction: "Take local roads to avoid Summit Pass", distance: "25.3 mi", elevation: 2800, details: "Alternative route around high elevation areas", estimatedTime: "2h 45m" },
+                    { step: 8, instruction: "Arrive at " + destination, distance: "12.5 mi", elevation: 2600, details: "Final approach through local streets", estimatedTime: "1h 15m" }
                 ];
             } else if (route.name === 'Fastest Route') {
                 directions = [
-                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location" },
-                    { step: 2, instruction: "Merge onto I-5 North", distance: "12.4 mi", elevation: 800, details: "Take the I-5 North on-ramp" },
-                    { step: 3, instruction: "Take Exit 67 for I-405 North", distance: "25.6 mi", elevation: 2100, details: "Continue on I-405 North toward mountain pass" },
-                    { step: 4, instruction: "Continue on Mountain Pass Hwy", distance: "32.1 mi", elevation: 4500, details: "WARNING: High elevation section - monitor breathing" },
-                    { step: 5, instruction: "Take Exit 89 for Summit Rd", distance: "8.2 mi", elevation: 6500, details: "CAUTION: Peak elevation - consider rest stop" },
-                    { step: 6, instruction: "Turn left onto Highland Ave", distance: "4.7 mi", elevation: 5200, details: "Descending from peak elevation" },
-                    { step: 7, instruction: "Turn right onto " + destination, distance: "2.1 mi", elevation: 4800, details: "Final approach to destination" }
+                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location", estimatedTime: "1 min" },
+                    { step: 2, instruction: "Merge onto I-5 North", distance: "25.4 mi", elevation: 800, details: "Take the I-5 North on-ramp for highway speed", estimatedTime: "22 min" },
+                    { step: 3, instruction: "Take Exit 67 for I-405 North", distance: "32.6 mi", elevation: 2100, details: "Continue on I-405 North toward mountain pass", estimatedTime: "28 min" },
+                    { step: 4, instruction: "Continue on Mountain Pass Hwy", distance: "45.1 mi", elevation: 4500, details: "WARNING: High elevation section - monitor breathing carefully", estimatedTime: "48 min" },
+                    { step: 5, instruction: "Take Exit 89 for Summit Rd", distance: "15.2 mi", elevation: 6500, details: "CAUTION: Peak elevation area - consider stopping if breathing difficulty", estimatedTime: "16 min" },
+                    { step: 6, instruction: "Descend via Highland Ave", distance: "6.7 mi", elevation: 5200, details: "Rapid descent from peak elevation", estimatedTime: "8 min" },
+                    { step: 7, instruction: "Arrive at " + destination, distance: "2.7 mi", elevation: 4800, details: "Final approach to destination", estimatedTime: "4 min" }
                 ];
             } else {
                 directions = [
-                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location" },
-                    { step: 2, instruction: "Turn right onto Scenic Route 1", distance: "8.9 mi", elevation: 600, details: "Beautiful coastal views ahead" },
-                    { step: 3, instruction: "Continue on Pacific Coast Hwy", distance: "15.2 mi", elevation: 1200, details: "Follow the coastline - scenic but winding" },
-                    { step: 4, instruction: "Turn left onto Canyon View Dr", distance: "12.7 mi", elevation: 2800, details: "Entering canyon area with moderate elevation" },
-                    { step: 5, instruction: "Take Exit 34 for Vista Point Rd", distance: "9.4 mi", elevation: 4800, details: "Scenic overlook available at Vista Point" },
-                    { step: 6, instruction: "Continue on Mountain Ridge Rd", distance: "11.8 mi", elevation: 3900, details: "Ridge road with panoramic views" },
-                    { step: 7, instruction: "Turn right onto " + destination, distance: "3.2 mi", elevation: 2400, details: "Final stretch to your destination" }
+                    { step: 1, instruction: "Head north on Main St", distance: "0.3 mi", elevation: 285, details: "Start from your current location", estimatedTime: "2 min" },
+                    { step: 2, instruction: "Turn right onto Scenic Route 1", distance: "18.9 mi", elevation: 600, details: "Beautiful coastal views ahead with moderate elevation", estimatedTime: "35 min" },
+                    { step: 3, instruction: "Continue on Pacific Coast Hwy", distance: "28.2 mi", elevation: 1200, details: "Follow the coastline - scenic but winding roads", estimatedTime: "52 min" },
+                    { step: 4, instruction: "Turn inland on Canyon View Dr", distance: "35.7 mi", elevation: 2800, details: "Entering canyon area with moderate elevation gain", estimatedTime: "1h 18m" },
+                    { step: 5, instruction: "Take Vista Point Rd", distance: "23.4 mi", elevation: 4800, details: "Scenic overlook available - highest point of route", estimatedTime: "48 min" },
+                    { step: 6, instruction: "Continue on Mountain Ridge Rd", distance: "28.8 mi", elevation: 3900, details: "Ridge road with panoramic views, gradual descent", estimatedTime: "58 min" },
+                    { step: 7, instruction: "Arrive at " + destination, distance: "16.7 mi", elevation: 2400, details: "Final descent to destination", estimatedTime: "32 min" }
                 ];
             }
             
@@ -988,6 +1014,7 @@
                             '<div style="color: #6b7280; font-size: 0.9rem; margin-bottom: 0.5rem;">' + direction.details + '</div>' +
                             '<div style="display: flex; gap: 1rem; font-size: 0.9rem;">' +
                                 '<span style="color: #2563eb; font-weight: 500;">Distance: ' + direction.distance + '</span>' +
+                                '<span style="color: #059669; font-weight: 500;">Time: ' + direction.estimatedTime + '</span>' +
                                 '<span style="' + elevationClass + '">Elevation: ' + direction.elevation + ' ft</span>' +
                             '</div>' +
                         '</div>' +

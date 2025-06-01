@@ -22,7 +22,7 @@
 </div>
 
 <div id="map"></div>
-<div id="info">Route info will appear here.</div>
+<div id="info">Click a route to see details.</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -31,7 +31,9 @@
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
+  const routeColors = ['blue', 'green', 'purple'];
   let routeLayers = [];
+  let dangerOverlays = [];
 
   async function geocode(place) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
@@ -42,54 +44,81 @@
   }
 
   async function getRoutes() {
-    clearRoutes();
+    clearMap();
     const start = await geocode(document.getElementById("startPlace").value);
     const end = await geocode(document.getElementById("endPlace").value);
 
-    const baseUrl = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?alternatives=true&overview=full&geometries=geojson`;
-    const res = await fetch(baseUrl);
+    const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?alternatives=true&overview=full&geometries=geojson`;
+    const res = await fetch(url);
     const data = await res.json();
-    if (!data.routes) throw new Error("Routing failed");
+    const routes = data.routes.slice(0, 3);
 
-    const routes = data.routes;
-    let lowestElevation = Infinity;
-    let safestRoute = null;
-    let allInfos = "";
+    let lowestGain = Infinity;
+    let bestIndex = 0;
 
-    for (const route of routes) {
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i];
       const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-      const elevations = await fetchElevations(coords, 2000); // ~2km spacing
-      const dangerSegments = findDangerSegments(coords, elevations);
+      const poly = L.polyline(coords, {
+        color: routeColors[i],
+        weight: 5,
+        opacity: 0.7
+      }).addTo(map);
 
-      const color = dangerSegments.length ? "red" : "blue";
-      const poly = L.polyline(coords, { color }).addTo(map);
+      poly.routeData = { coords, index: i, route };
+
+      poly.on('click', () => selectRoute(poly));
       routeLayers.push(poly);
 
-      if (dangerSegments.length) {
-        for (const [i, j] of dangerSegments) {
-          L.polyline(coords.slice(i, j + 1), { color: "red", weight: 6 }).addTo(map);
-        }
-      }
+      // Prefetch elevation gain to identify lowest-gain route
+      const elevations = await fetchElevations(coords, 2000);
+      const gain = totalElevationGain(elevations);
+      poly.routeData.elevations = elevations;
+      poly.routeData.gain = gain;
 
-      const totalGain = totalElevationGain(elevations);
-      if (totalGain < lowestElevation) {
-        lowestElevation = totalGain;
-        safestRoute = route;
+      if (gain < lowestGain) {
+        lowestGain = gain;
+        bestIndex = i;
       }
-
-      allInfos += `<p><b>Route ${routes.indexOf(route) + 1}:</b> ${Math.round(route.distance / 1000)} km, ${Math.round(route.duration / 60)} min, Elev. Gain: ${Math.round(totalGain)}m`;
-      if (dangerSegments.length) allInfos += ` <span class="danger">(⚠️ steep sections)</span>`;
-      allInfos += `</p>`;
     }
 
     map.fitBounds(routeLayers[0].getBounds());
-    document.getElementById("info").innerHTML = allInfos;
+    selectRoute(routeLayers[bestIndex]);
   }
 
-  function clearRoutes() {
+  function clearMap() {
     routeLayers.forEach(layer => map.removeLayer(layer));
+    dangerOverlays.forEach(layer => map.removeLayer(layer));
     routeLayers = [];
+    dangerOverlays = [];
     document.getElementById("info").innerHTML = "";
+  }
+
+  function selectRoute(poly) {
+    dangerOverlays.forEach(layer => map.removeLayer(layer));
+    dangerOverlays = [];
+
+    const { coords, elevations, route, gain } = poly.routeData;
+    const dangerSegments = findDangerSegments(coords, elevations);
+
+    for (const [i, j] of dangerSegments) {
+      const danger = L.polyline(coords.slice(i, j + 1), {
+        color: "red",
+        weight: 6,
+        opacity: 1
+      }).addTo(map);
+      dangerOverlays.push(danger);
+    }
+
+    const dist = Math.round(route.distance / 1000);
+    const time = Math.round(route.duration / 60);
+    document.getElementById("info").innerHTML = `
+      <b>Selected Route:</b><br>
+      Distance: ${dist} km<br>
+      Duration: ${time} min<br>
+      Elevation Gain: ${Math.round(gain)} meters<br>
+      ${dangerSegments.length ? "<span class='danger'>⚠️ Steep segments detected!</span>" : "✅ Safe elevation"}
+    `;
   }
 
   async function fetchElevations(coords, maxPoints = 50) {
@@ -116,7 +145,7 @@
 
   function findDangerSegments(coords, elevations) {
     const segments = [];
-    const groupSize = Math.floor(elevations.length / 4); // Approximate 70km chunk
+    const groupSize = Math.floor(elevations.length / 4); // ~70km chunk
     for (let i = 0; i < elevations.length - groupSize; i++) {
       const elevGain = elevations[i + groupSize] - elevations[i];
       if (elevGain > 610) segments.push([i, i + groupSize]);

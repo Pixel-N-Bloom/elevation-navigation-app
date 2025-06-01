@@ -92,7 +92,8 @@
         for (let j = 0; j < coords.length - 1; j++) {
           const elevFt = elevations[j] * 3.28084;
           let color = 'green';
-          if (elevFt > 6000) color = 'red';
+          if (elevFt > 8000) color = 'purple';
+          else if (elevFt > 6000) color = 'red';
           else if (elevFt > 4000) color = 'orange';
           else if (elevFt > 2000) color = 'yellow';
           const seg = L.polyline([coords[j], coords[j + 1]], {
@@ -165,7 +166,8 @@
       const idx = Math.floor(i * elevations.length / segmentCount);
       const elevFt = Math.round(elevations[idx] * 3.28084);
       let color = 'green';
-      if (elevFt > 6000) color = 'red';
+      if (elevFt > 8000) color = 'purple';
+      else if (elevFt > 6000) color = 'red';
       else if (elevFt > 4000) color = 'orange';
       else if (elevFt > 2000) color = 'yellow';
       const marker = L.circleMarker(coords[idx], {
@@ -203,7 +205,6 @@
   function maxElevation(elevations) {
     return Math.max(...elevations);
   }
-
 </script>
 
 </body>

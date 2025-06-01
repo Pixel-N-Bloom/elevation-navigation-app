@@ -1,58 +1,112 @@
-<!-- tweaked COPD-safe route logic -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>COPD-Safe Navigator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 75vh; }
+    #controls { padding: 10px; background: #f0f0f0; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    #info { padding: 10px; }
+    .danger { color: red; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<div id="controls">
+  <input type="text" id="startPlace" placeholder="Start (e.g. Denver, CO)" />
+  <input type="text" id="endPlace" placeholder="End (e.g. Phoenix, AZ)" />
+  <label>
+    <input type="checkbox" id="safeMode" checked />
+    Prioritize Safe Elevation Route (may take longer)
+  </label>
+  <button onclick="getRoutes()">Get Route</button>
+</div>
+
+<div id="map"></div>
+<div id="info">Click a route to see details.</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  // ... [unchanged map and geocode setup]
+  const map = L.map('map').setView([37, -105], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
 
-  async function getRoutes() {
-    clearMap();
-    const start = await geocode(document.getElementById("startPlace").value);
-    const end = await geocode(document.getElementById("endPlace").value);
-    const safeMode = document.getElementById("safeMode").checked;
+  const routeColors = ['blue', 'green', 'purple'];
+  let routeLayers = [];
+  let dangerOverlays = [];
 
-    const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?alternatives=true&overview=full&geometries=geojson`;
+  async function geocode(place) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
     const res = await fetch(url);
     const data = await res.json();
-    const routes = data.routes.slice(0, 3);
-
-    let bestIndex = 0;
-    let bestScore = Infinity;
-    const baseDuration = routes[0].duration;
-    const maxDuration = baseDuration + (8 * 3600);
-
-    for (let i = 0; i < routes.length; i++) {
-      const route = routes[i];
-      const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-      const poly = L.polyline(coords, {
-        color: routeColors[i], weight: 5, opacity: 0.7
-      }).addTo(map);
-
-      poly.routeData = { coords, index: i, route };
-      poly.on('click', () => selectRoute(poly));
-      routeLayers.push(poly);
-
-      const elevations = await fetchElevations(coords, 2000);
-      const gain = totalElevationGain(elevations);
-      const maxElev = maxElevation(elevations);
-
-      poly.routeData.elevations = elevations;
-      poly.routeData.gain = gain;
-      poly.routeData.maxElevation = maxElev;
-
-      if (safeMode) {
-        const durationPenalty = route.duration > maxDuration ? 1e6 : 0;
-        const score = maxElev + gain + durationPenalty;
-        if (score < bestScore) {
-          bestScore = score;
-          bestIndex = i;
-        }
-      } else if (i === 0) bestIndex = 0;
-    }
-
-    map.fitBounds(routeLayers[bestIndex].getBounds());
-    selectRoute(routeLayers[bestIndex]);
+    if (!data.length) throw new Error("Location not found: " + place);
+    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
   }
 
-  function maxElevation(elevations) {
-    return Math.max(...elevations);
+  async function getRoutes() {
+    try {
+      clearMap();
+      const start = await geocode(document.getElementById("startPlace").value);
+      const end = await geocode(document.getElementById("endPlace").value);
+      const safeMode = document.getElementById("safeMode").checked;
+
+      const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?alternatives=true&overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const routes = data.routes.slice(0, 3);
+
+      let bestIndex = 0;
+      let bestScore = Infinity;
+      const baseDuration = routes[0].duration;
+      const maxDuration = baseDuration + (8 * 3600);
+
+      for (let i = 0; i < routes.length; i++) {
+        const route = routes[i];
+        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+        const poly = L.polyline(coords, {
+          color: routeColors[i], weight: 5, opacity: 0.7
+        }).addTo(map);
+
+        poly.routeData = { coords, index: i, route };
+        poly.on('click', () => selectRoute(poly));
+        routeLayers.push(poly);
+
+        const elevations = await fetchElevations(coords, 2000);
+        const gain = totalElevationGain(elevations);
+        const maxElev = maxElevation(elevations);
+
+        poly.routeData.elevations = elevations;
+        poly.routeData.gain = gain;
+        poly.routeData.maxElevation = maxElev;
+
+        if (safeMode) {
+          const durationPenalty = route.duration > maxDuration ? 1e6 : 0;
+          const score = maxElev + gain + durationPenalty;
+          if (score < bestScore) {
+            bestScore = score;
+            bestIndex = i;
+          }
+        } else if (i === 0) bestIndex = 0;
+      }
+
+      map.fitBounds(routeLayers[bestIndex].getBounds());
+      selectRoute(routeLayers[bestIndex]);
+
+    } catch (err) {
+      document.getElementById("info").innerHTML = `<span class='danger'>Error: ${err.message}</span>`;
+    }
+  }
+
+  function clearMap() {
+    routeLayers.forEach(layer => map.removeLayer(layer));
+    dangerOverlays.forEach(layer => map.removeLayer(layer));
+    routeLayers = [];
+    dangerOverlays = [];
+    document.getElementById("info").innerHTML = "";
   }
 
   function selectRoute(poly) {
@@ -83,4 +137,43 @@
       ${elevDanger}
     `;
   }
+
+  async function fetchElevations(coords, maxPoints = 50) {
+    const step = Math.max(1, Math.floor(coords.length / maxPoints));
+    const sampled = coords.filter((_, i) => i % step === 0);
+    const locations = sampled.map(([lat, lon]) => ({ latitude: lat, longitude: lon }));
+    const res = await fetch("https://api.open-elevation.com/api/v1/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locations })
+    });
+    const data = await res.json();
+    return data.results.map(r => r.elevation);
+  }
+
+  function totalElevationGain(elevations) {
+    let gain = 0;
+    for (let i = 1; i < elevations.length; i++) {
+      const diff = elevations[i] - elevations[i - 1];
+      if (diff > 0) gain += diff;
+    }
+    return gain;
+  }
+
+  function maxElevation(elevations) {
+    return Math.max(...elevations);
+  }
+
+  function findDangerSegments(coords, elevations) {
+    const segments = [];
+    const groupSize = Math.floor(elevations.length / 4);
+    for (let i = 0; i < elevations.length - groupSize; i++) {
+      const elevGain = elevations[i + groupSize] - elevations[i];
+      if (elevGain > 610) segments.push([i, i + groupSize]);
+    }
+    return segments;
+  }
 </script>
+
+</body>
+</html>

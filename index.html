@@ -85,7 +85,7 @@
       transform: translateX(24px);
     }
     #map {
-      height: calc(75vh - 60px);
+      height: calc(100vh - 250px);
     }
     #info-bar {
       position: fixed;
@@ -105,7 +105,7 @@
     }
     #legend {
       position: absolute;
-      bottom: 50px;
+      bottom: 60px;
       right: 10px;
       background: rgba(255, 255, 255, 0.95);
       padding: 10px;
@@ -174,9 +174,170 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+  let map;
+  let routeLayers = [], dangerOverlays = [], elevationMarkers = [], currentRoute = null;
+
   function toggleLegend() {
     const legend = document.getElementById('legend');
     legend.style.display = legend.style.display === 'none' ? 'block' : 'none';
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    map = L.map('map').setView([37, -105], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+  });
+
+  async function geocode(place) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.length) throw new Error("Location not found: " + place);
+    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  }
+
+  async function fetchElevations(coords, sampleCount) {
+    const step = Math.max(1, Math.floor(coords.length / sampleCount));
+    const sampled = coords.filter((_, i) => i % step === 0);
+    const locations = sampled.map(([lat, lon]) => ({ latitude: lat, longitude: lon }));
+    const res = await fetch("https://api.open-elevation.com/api/v1/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locations })
+    });
+    const data = await res.json();
+    return data.results.map(r => r.elevation);
+  }
+
+  function totalElevationGain(elevations) {
+    let gain = 0;
+    for (let i = 1; i < elevations.length; i++) {
+      const diff = elevations[i] - elevations[i - 1];
+      if (diff > 0) gain += diff;
+    }
+    return gain;
+  }
+
+  function maxElevation(elevations) {
+    return Math.max(...elevations);
+  }
+
+  function clearMap() {
+    routeLayers.forEach(layer => map.removeLayer(layer));
+    dangerOverlays.forEach(layer => map.removeLayer(layer));
+    elevationMarkers.forEach(m => map.removeLayer(m));
+    routeLayers = [];
+    dangerOverlays = [];
+    elevationMarkers = [];
+    document.getElementById("info-bar").innerHTML = "Click a route to see details.";
+    currentRoute = null;
+  }
+
+  async function getRoutes() {
+    try {
+      clearMap();
+      document.getElementById("elevationToggle").disabled = true;
+
+      const start = await geocode(document.getElementById("startPlace").value);
+      const end = await geocode(document.getElementById("endPlace").value);
+      const safeMode = document.getElementById("safeMode").checked;
+
+      const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?alternatives=true&overview=full&geometries=geojson&annotations=true`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const routes = data.routes.slice(0, 3);
+
+      let bestIndex = 0;
+      let bestScore = Infinity;
+      const baseDuration = routes[0].duration;
+      const maxDuration = baseDuration + (8 * 3600);
+
+      for (let i = 0; i < routes.length; i++) {
+        const route = routes[i];
+        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+        const poly = L.polyline(coords, { color: '#999', weight: 1, opacity: 0 }).addTo(map);
+        poly.routeData = { coords, index: i, route };
+        poly.on('click', () => selectRoute(poly));
+        routeLayers.push(poly);
+
+        const elevations = await fetchElevations(coords, coords.length);
+        const gain = totalElevationGain(elevations);
+        const maxElev = maxElevation(elevations);
+        poly.routeData.elevations = elevations;
+        poly.routeData.gain = gain;
+        poly.routeData.maxElevation = maxElev;
+
+        for (let j = 0; j < coords.length - 1; j++) {
+          const elevFt = elevations[j] * 3.28084;
+          let color = 'green';
+          if (elevFt > 8000) color = 'purple';
+          else if (elevFt > 6000) color = 'red';
+          else if (elevFt > 4000) color = 'orange';
+          else if (elevFt > 2000) color = 'yellow';
+          const seg = L.polyline([coords[j], coords[j + 1]], { color, weight: 5, opacity: 0.9 }).addTo(map);
+          dangerOverlays.push(seg);
+        }
+
+        if (safeMode) {
+          const durationPenalty = route.duration > maxDuration ? 1e6 : 0;
+          const score = maxElev + gain + durationPenalty;
+          if (score < bestScore) {
+            bestScore = score;
+            bestIndex = i;
+          }
+        } else if (i === 0) bestIndex = 0;
+      }
+
+      map.fitBounds(routeLayers[bestIndex].getBounds());
+      selectRoute(routeLayers[bestIndex]);
+      document.getElementById("elevationToggle").disabled = false;
+    } catch (err) {
+      document.getElementById("info-bar").innerHTML = `<span class='danger'>Error: ${err.message}</span>`;
+    }
+  }
+
+  function selectRoute(poly) {
+    currentRoute = poly;
+    const { coords, elevations, route, gain, maxElevation } = poly.routeData;
+    const distMi = (route.distance / 1609.34).toFixed(1);
+    const time = Math.round(route.duration / 60);
+    const gainFt = Math.round(gain * 3.28084);
+    const maxElevFt = Math.round(maxElevation * 3.28084);
+    const elevDanger = maxElevation > 1500 ? "<span class='danger'>⚠️ High elevation detected!</span>" : "✅ Low altitude";
+
+    document.getElementById("info-bar").innerHTML = `
+      <b>Selected Route:</b><br>
+      Distance: ${distMi} mi<br>
+      Duration: ${time} min<br>
+      Elevation Gain: ${gainFt} ft<br>
+      Max Elevation: ${maxElevFt} ft<br>
+      ${elevDanger}
+    `;
+  }
+
+  function toggleElevationMarkers() {
+    if (!currentRoute) return;
+    elevationMarkers.forEach(m => map.removeLayer(m));
+    elevationMarkers = [];
+
+    const { coords, elevations, route } = currentRoute.routeData;
+    const intervalMeters = 50 * 1609.34;
+    const segmentCount = Math.floor(route.distance / intervalMeters);
+
+    for (let i = 0; i <= segmentCount; i++) {
+      const idx = Math.floor(i * elevations.length / segmentCount);
+      const elevFt = Math.round(elevations[idx] * 3.28084);
+      let color = 'green';
+      if (elevFt > 8000) color = 'purple';
+      else if (elevFt > 6000) color = 'red';
+      else if (elevFt > 4000) color = 'orange';
+      else if (elevFt > 2000) color = 'yellow';
+      const marker = L.circleMarker(coords[idx], {
+        radius: 6, color, fillColor: color, fillOpacity: 1
+      }).bindPopup(`Mile ${(i * 50)}: ${elevFt} ft`).addTo(map);
+      elevationMarkers.push(marker);
+    }
   }
 </script>
 </body>

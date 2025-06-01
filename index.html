@@ -83,6 +83,20 @@
         poly.routeData.gain = gain;
         poly.routeData.maxElevation = maxElev;
 
+        // Color segments for danger (steep or high)
+        const dangerSegments = findDangerSegments(coords, elevations);
+        for (const [i1, i2] of dangerSegments) {
+          const segmentElev = elevations.slice(i1, i2 + 1);
+          const segmentMax = Math.max(...segmentElev);
+          const color = segmentMax > 1500 ? 'red' : 'orange';
+          const seg = L.polyline(coords.slice(i1, i2 + 1), {
+            color,
+            weight: 5,
+            opacity: 1
+          }).addTo(map);
+          dangerOverlays.push(seg);
+        }
+
         if (safeMode) {
           const durationPenalty = route.duration > maxDuration ? 1e6 : 0;
           const score = maxElev + gain + durationPenalty;
@@ -110,19 +124,7 @@
   }
 
   function selectRoute(poly) {
-    dangerOverlays.forEach(layer => map.removeLayer(layer));
-    dangerOverlays = [];
-
     const { coords, elevations, route, gain, maxElevation } = poly.routeData;
-    const dangerSegments = findDangerSegments(coords, elevations);
-
-    for (const [i, j] of dangerSegments) {
-      const danger = L.polyline(coords.slice(i, j + 1), {
-        color: "red", weight: 6, opacity: 1
-      }).addTo(map);
-      dangerOverlays.push(danger);
-    }
-
     const dist = Math.round(route.distance / 1000);
     const time = Math.round(route.duration / 60);
     const elevDanger = maxElevation > 1500 ? "<span class='danger'>⚠️ High elevation detected!</span>" : "✅ Low altitude";
@@ -133,7 +135,6 @@
       Duration: ${time} min<br>
       Elevation Gain: ${Math.round(gain)} meters<br>
       Max Elevation: ${Math.round(maxElevation)} meters<br>
-      ${dangerSegments.length ? "<span class='danger'>⚠️ Steep segments detected!</span><br>" : "✅ Gentle slope<br>"}
       ${elevDanger}
     `;
   }
@@ -169,7 +170,9 @@
     const groupSize = Math.floor(elevations.length / 4);
     for (let i = 0; i < elevations.length - groupSize; i++) {
       const elevGain = elevations[i + groupSize] - elevations[i];
-      if (elevGain > 610) segments.push([i, i + groupSize]);
+      if (elevGain > 610 || Math.max(...elevations.slice(i, i + groupSize + 1)) > 1500) {
+        segments.push([i, i + groupSize]);
+      }
     }
     return segments;
   }

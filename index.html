@@ -37,7 +37,6 @@
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  const routeColors = ['blue', 'green', 'purple'];
   let routeLayers = [];
   let dangerOverlays = [];
   let elevationMarkers = [];
@@ -74,7 +73,7 @@
         const route = routes[i];
         const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
         const poly = L.polyline(coords, {
-          color: routeColors[i], weight: 5, opacity: 0.7
+          color: '#999', weight: 1, opacity: 0
         }).addTo(map);
 
         poly.routeData = { coords, index: i, route };
@@ -90,18 +89,16 @@
         poly.routeData.gain = gain;
         poly.routeData.maxElevation = maxElev;
 
-        const dangerSegments = findDangerSegmentsByTime(coords, elevations, durations);
-        for (const [i1, i2] of dangerSegments) {
-          const segmentElev = elevations.slice(i1, i2 + 1);
-          const segmentMaxFt = Math.max(...segmentElev) * 3.28084;
+        for (let j = 0; j < coords.length - 1; j++) {
+          const elevFt = elevations[j] * 3.28084;
           let color = 'green';
-          if (segmentMaxFt > 6000) color = 'red';
-          else if (segmentMaxFt > 4000) color = 'orange';
-          else if (segmentMaxFt > 2000) color = 'yellow';
-          const seg = L.polyline(coords.slice(i1, i2 + 1), {
+          if (elevFt > 6000) color = 'red';
+          else if (elevFt > 4000) color = 'orange';
+          else if (elevFt > 2000) color = 'yellow';
+          const seg = L.polyline([coords[j], coords[j + 1]], {
             color,
             weight: 5,
-            opacity: 1
+            opacity: 0.9
           }).addTo(map);
           dangerOverlays.push(seg);
         }
@@ -207,22 +204,6 @@
     return Math.max(...elevations);
   }
 
-  function findDangerSegmentsByTime(coords, elevations, durations) {
-    const segments = [];
-    for (let i = 0; i < durations.length; i++) {
-      let timeSum = 0;
-      let elevStart = elevations[i];
-      for (let j = i; j < durations.length; j++) {
-        timeSum += durations[j];
-        if (timeSum >= 3600) {
-          const elevDiff = elevations[j] - elevStart;
-          if (elevDiff >= 305) segments.push([i, j]);
-          break;
-        }
-      }
-    }
-    return segments;
-  }
 </script>
 
 </body>

@@ -11,6 +11,7 @@
     #controls { padding: 10px; background: #f0f0f0; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     #info { padding: 10px; }
     .danger { color: red; font-weight: bold; }
+    #elevationToggle { margin-left: 10px; }
   </style>
 </head>
 <body>
@@ -23,6 +24,7 @@
     Prioritize Safe Elevation Route (may take longer)
   </label>
   <button onclick="getRoutes()">Get Route</button>
+  <button id="elevationToggle" onclick="toggleElevationMarkers()" disabled>Show Elevation (50mi)</button>
 </div>
 
 <div id="map"></div>
@@ -38,6 +40,8 @@
   const routeColors = ['blue', 'green', 'purple'];
   let routeLayers = [];
   let dangerOverlays = [];
+  let elevationMarkers = [];
+  let currentRoute = null;
 
   async function geocode(place) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
@@ -50,6 +54,8 @@
   async function getRoutes() {
     try {
       clearMap();
+      document.getElementById("elevationToggle").disabled = true;
+
       const start = await geocode(document.getElementById("startPlace").value);
       const end = await geocode(document.getElementById("endPlace").value);
       const safeMode = document.getElementById("safeMode").checked;
@@ -87,8 +93,11 @@
         const dangerSegments = findDangerSegmentsByTime(coords, elevations, durations);
         for (const [i1, i2] of dangerSegments) {
           const segmentElev = elevations.slice(i1, i2 + 1);
-          const segmentMax = Math.max(...segmentElev);
-          const color = segmentMax > 1500 ? 'red' : 'orange';
+          const segmentMaxFt = Math.max(...segmentElev) * 3.28084;
+          let color = 'green';
+          if (segmentMaxFt > 6000) color = 'red';
+          else if (segmentMaxFt > 4000) color = 'orange';
+          else if (segmentMaxFt > 2000) color = 'yellow';
           const seg = L.polyline(coords.slice(i1, i2 + 1), {
             color,
             weight: 5,
@@ -109,6 +118,7 @@
 
       map.fitBounds(routeLayers[bestIndex].getBounds());
       selectRoute(routeLayers[bestIndex]);
+      document.getElementById("elevationToggle").disabled = false;
 
     } catch (err) {
       document.getElementById("info").innerHTML = `<span class='danger'>Error: ${err.message}</span>`;
@@ -118,12 +128,16 @@
   function clearMap() {
     routeLayers.forEach(layer => map.removeLayer(layer));
     dangerOverlays.forEach(layer => map.removeLayer(layer));
+    elevationMarkers.forEach(m => map.removeLayer(m));
     routeLayers = [];
     dangerOverlays = [];
+    elevationMarkers = [];
     document.getElementById("info").innerHTML = "";
+    currentRoute = null;
   }
 
   function selectRoute(poly) {
+    currentRoute = poly;
     const { coords, elevations, route, gain, maxElevation } = poly.routeData;
     const distMi = (route.distance / 1609.34).toFixed(1);
     const time = Math.round(route.duration / 60);
@@ -139,6 +153,32 @@
       Max Elevation: ${maxElevFt} ft<br>
       ${elevDanger}
     `;
+  }
+
+  function toggleElevationMarkers() {
+    if (!currentRoute) return;
+    elevationMarkers.forEach(m => map.removeLayer(m));
+    elevationMarkers = [];
+
+    const { coords, elevations, route } = currentRoute.routeData;
+    const intervalMeters = 50 * 1609.34;
+    const segmentCount = Math.floor(route.distance / intervalMeters);
+
+    for (let i = 0; i <= segmentCount; i++) {
+      const idx = Math.floor(i * elevations.length / segmentCount);
+      const elevFt = Math.round(elevations[idx] * 3.28084);
+      let color = 'green';
+      if (elevFt > 6000) color = 'red';
+      else if (elevFt > 4000) color = 'orange';
+      else if (elevFt > 2000) color = 'yellow';
+      const marker = L.circleMarker(coords[idx], {
+        radius: 6,
+        color,
+        fillColor: color,
+        fillOpacity: 1
+      }).bindPopup(`Mile ${(i * 50)}: ${elevFt} ft`).addTo(map);
+      elevationMarkers.push(marker);
+    }
   }
 
   async function fetchElevations(coords, sampleCount) {

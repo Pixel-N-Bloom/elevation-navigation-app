@@ -83,7 +83,6 @@
         poly.routeData.gain = gain;
         poly.routeData.maxElevation = maxElev;
 
-        // Color segments for danger (steep or high)
         const dangerSegments = findDangerSegments(coords, elevations);
         for (const [i1, i2] of dangerSegments) {
           const segmentElev = elevations.slice(i1, i2 + 1);
@@ -125,16 +124,18 @@
 
   function selectRoute(poly) {
     const { coords, elevations, route, gain, maxElevation } = poly.routeData;
-    const dist = Math.round(route.distance / 1000);
+    const distMi = (route.distance / 1609.34).toFixed(1);
     const time = Math.round(route.duration / 60);
+    const gainFt = Math.round(gain * 3.28084);
+    const maxElevFt = Math.round(maxElevation * 3.28084);
     const elevDanger = maxElevation > 1500 ? "<span class='danger'>⚠️ High elevation detected!</span>" : "✅ Low altitude";
 
     document.getElementById("info").innerHTML = `
       <b>Selected Route:</b><br>
-      Distance: ${dist} km<br>
+      Distance: ${distMi} mi<br>
       Duration: ${time} min<br>
-      Elevation Gain: ${Math.round(gain)} meters<br>
-      Max Elevation: ${Math.round(maxElevation)} meters<br>
+      Elevation Gain: ${gainFt} ft<br>
+      Max Elevation: ${maxElevFt} ft<br>
       ${elevDanger}
     `;
   }

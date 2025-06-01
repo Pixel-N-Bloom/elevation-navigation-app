@@ -54,7 +54,7 @@
       const end = await geocode(document.getElementById("endPlace").value);
       const safeMode = document.getElementById("safeMode").checked;
 
-      const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?alternatives=true&overview=full&geometries=geojson`;
+      const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?alternatives=true&overview=full&geometries=geojson&annotations=true`;
       const res = await fetch(url);
       const data = await res.json();
       const routes = data.routes.slice(0, 3);
@@ -75,7 +75,8 @@
         poly.on('click', () => selectRoute(poly));
         routeLayers.push(poly);
 
-        const elevations = await fetchElevations(coords, 2000);
+        const durations = route.legs[0].annotation.duration;
+        const elevations = await fetchElevations(coords, coords.length);
         const gain = totalElevationGain(elevations);
         const maxElev = maxElevation(elevations);
 
@@ -83,7 +84,7 @@
         poly.routeData.gain = gain;
         poly.routeData.maxElevation = maxElev;
 
-        const dangerSegments = findDangerSegments(coords, elevations);
+        const dangerSegments = findDangerSegmentsByTime(coords, elevations, durations);
         for (const [i1, i2] of dangerSegments) {
           const segmentElev = elevations.slice(i1, i2 + 1);
           const segmentMax = Math.max(...segmentElev);
@@ -140,8 +141,8 @@
     `;
   }
 
-  async function fetchElevations(coords, maxPoints = 50) {
-    const step = Math.max(1, Math.floor(coords.length / maxPoints));
+  async function fetchElevations(coords, sampleCount) {
+    const step = Math.max(1, Math.floor(coords.length / sampleCount));
     const sampled = coords.filter((_, i) => i % step === 0);
     const locations = sampled.map(([lat, lon]) => ({ latitude: lat, longitude: lon }));
     const res = await fetch("https://api.open-elevation.com/api/v1/lookup", {
@@ -166,13 +167,18 @@
     return Math.max(...elevations);
   }
 
-  function findDangerSegments(coords, elevations) {
+  function findDangerSegmentsByTime(coords, elevations, durations) {
     const segments = [];
-    const groupSize = Math.floor(elevations.length / 4);
-    for (let i = 0; i < elevations.length - groupSize; i++) {
-      const elevGain = elevations[i + groupSize] - elevations[i];
-      if (elevGain > 610 || Math.max(...elevations.slice(i, i + groupSize + 1)) > 1500) {
-        segments.push([i, i + groupSize]);
+    for (let i = 0; i < durations.length; i++) {
+      let timeSum = 0;
+      let elevStart = elevations[i];
+      for (let j = i; j < durations.length; j++) {
+        timeSum += durations[j];
+        if (timeSum >= 3600) {
+          const elevDiff = elevations[j] - elevStart;
+          if (elevDiff >= 305) segments.push([i, j]);
+          break;
+        }
       }
     }
     return segments;
